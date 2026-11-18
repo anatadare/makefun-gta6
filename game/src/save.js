@@ -1,14 +1,22 @@
-// Progress in localStorage (this browser only): cash, the story's place,
-// lifetime earnings, found stashes and cars stolen. Saves carry a version
-// number; an older save, or anything unreadable, loads as far as it can and
-// fills the rest with fresh defaults, so a bad save never bricks the game.
+// Progress in localStorage (this browser only): cash, where the story
+// stands, lifetime earnings, found stashes, cars stolen. Saves carry a
+// version number; an older save, or anything unreadable, loads as far as
+// it can and fills the rest with fresh defaults, so a bad save never
+// bricks the game.
 
 import { SAVE_KEY } from './config.js';
 
 const SAVE_VERSION = 2;
 
 function freshSave() {
-  return { v: SAVE_VERSION, money: 0, missionIndex: 0, totalEarned: 0, stashes: [], carsStolen: 0 };
+  return {
+    v: SAVE_VERSION,
+    money: 0,
+    missionIndex: 0,
+    totalEarned: 0,
+    stashes: [],
+    carsStolen: 0,
+  };
 }
 
 function asNumber(value, fallback) {
@@ -21,7 +29,8 @@ function asIndexList(value) {
 }
 
 function asNonNegativeInt(value, fallback) {
-  return Number.isInteger(value) ? Math.max(0, value) : fallback;
+  if (!Number.isInteger(value)) return fallback;
+  return value < 0 ? 0 : value;
 }
 
 export function loadSave() {

@@ -1,7 +1,7 @@
 // The HUD and the screens: wanted stars, health, money, the clock, the
 // minimap, the mission objective with its timer bar, phone messages and
 // context prompts, plus the title, pause, wasted and busted panels. The
-// weapon in hand shows bottom left while on foot, and the end screens now
+// weapon in hand shows bottom left while on foot, and the end screens
 // carry the run's stats. Everything is drawn big and bright: the
 // screenshots shrink, so small text would be lost.
 
@@ -32,11 +32,13 @@ function clockText(time) {
   return `${hh}:${mm}`;
 }
 
-const fonts = new Map();
+const fontCache = new Map();
 function font(size, weight) {
   const key = `${weight || ''}${size}`;
-  if (!fonts.has(key)) fonts.set(key, `${weight ? `${weight} ` : ''}${size}px ${FONT}`);
-  return fonts.get(key);
+  if (!fontCache.has(key)) {
+    fontCache.set(key, `${weight ? `${weight} ` : ''}${size}px ${FONT}`);
+  }
+  return fontCache.get(key);
 }
 
 function text(ctx, value, x, y, size, color, align, weight) {
@@ -69,8 +71,9 @@ function drawStars(ctx, stars) {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
   for (let i = 0; i < 5; i += 1) {
-    ctx.fillStyle = i < stars ? PALETTE.gold : 'rgba(255,255,255,0.25)';
-    ctx.fillText(i < stars ? '★' : '☆', 20 + i * 34, 16);
+    const lit = i < stars;
+    ctx.fillStyle = lit ? PALETTE.gold : 'rgba(255,255,255,0.25)';
+    ctx.fillText(lit ? '★' : '☆', 20 + i * 34, 16);
   }
 }
 
@@ -104,12 +107,12 @@ function drawMinimap(ctx, state, time) {
   ctx.stroke();
   // The garage, the hideout and the stadium, so the player always knows
   // the way home and the way to the big game.
-  const places = [
+  const landmarks = [
     { at: PLACES.garage, color: '#ff8a3d', size: 5 },
     { at: PLACES.hideout, color: PALETTE.green, size: 5 },
     { at: PLACES.stadium, color: PALETTE.gold, size: 5 },
   ];
-  for (const p of places) {
+  for (const p of landmarks) {
     ctx.fillStyle = p.color;
     ctx.beginPath();
     ctx.arc(px(p.at.x), py(p.at.y), p.size, 0, Math.PI * 2);
@@ -207,7 +210,8 @@ function drawObjective(ctx, state) {
   // A timed step gets a draining bar under the panel, so the clock reads
   // at a glance even mid-chase.
   if (obj.timer !== null && obj.timerTotal) {
-    bar(ctx, panelX + 8, 58, width - 16, 8, obj.timer / obj.timerTotal, obj.timer <= 10 ? PALETTE.red : PALETTE.gold);
+    const color = obj.timer <= 10 ? PALETTE.red : PALETTE.gold;
+    bar(ctx, panelX + 8, 58, width - 16, 8, obj.timer / obj.timerTotal, color);
   }
 }
 
@@ -231,10 +235,14 @@ export function drawHud(ctx, state, time, hintAlpha) {
   // A dark panel behind the top-left cluster, so the text reads over sand too.
   panel(ctx, 12, 10, 252, 182, 10);
   drawStars(ctx, stars);
-  bar(ctx, 20, 58, 230, 20, player.health / 100, player.health > 35 ? PALETTE.green : PALETTE.red);
+  const healthColor = player.health > 35 ? PALETTE.green : PALETTE.red;
+  bar(ctx, 20, 58, 230, 20, player.health / 100, healthColor);
   text(ctx, `$${player.money.toLocaleString('en-US')}`, 20, 104, 28, PALETTE.gold, 'left', 'bold');
-  if (state.missions.storyDone) text(ctx, 'FREE ROAM', 20, 132, 16, PALETTE.muted, 'left', 'bold');
-  else text(ctx, `MISSION ${state.missions.index + 1}/${MISSION_COUNT}`, 20, 132, 16, PALETTE.muted, 'left', 'bold');
+  if (state.missions.storyDone) {
+    text(ctx, 'FREE ROAM', 20, 132, 16, PALETTE.muted, 'left', 'bold');
+  } else {
+    text(ctx, `MISSION ${state.missions.index + 1}/${MISSION_COUNT}`, 20, 132, 16, PALETTE.muted, 'left', 'bold');
+  }
   const foundStashes = STASHES.length - state.stashes.length;
   text(ctx, `STASHES ${foundStashes}/${STASHES.length}`, 20, 154, 16, PALETTE.muted, 'left', 'bold');
   text(ctx, `TIME ${clockText(time)}`, 20, 178, 16, PALETTE.muted, 'left', 'bold');
@@ -251,7 +259,8 @@ export function drawHud(ctx, state, time, hintAlpha) {
     text(ctx, 'mph', 98, VIEW.height - 62, 20, PALETTE.muted, 'left', 'bold');
     text(ctx, player.car.type.name, 22, VIEW.height - 34, 20, PALETTE.muted, 'left', 'bold');
     const ch = Math.max(0, player.car.health / 100);
-    bar(ctx, 22, VIEW.height - 26, 156, 10, ch, ch > 0.5 ? PALETTE.green : ch > 0.25 ? '#f39c12' : PALETTE.red);
+    const carColor = ch > 0.5 ? PALETTE.green : ch > 0.25 ? '#f39c12' : PALETTE.red;
+    bar(ctx, 22, VIEW.height - 26, 156, 10, ch, carColor);
   }
   // On foot, the same corner shows the weapon in hand and the swap key.
   if (player.onFoot) {
@@ -272,14 +281,17 @@ export function drawHud(ctx, state, time, hintAlpha) {
   if (hintAlpha > 0) {
     ctx.globalAlpha = hintAlpha;
     text(ctx, 'WASD move/drive · Mouse aim · Click shoot', VIEW.width - 20, VIEW.height - 44, 17, PALETTE.muted, 'right');
-    text(ctx, 'E enter car · F punch · Q swap weapon · Space handbrake · P pause · M mute', VIEW.width - 20, VIEW.height - 20, 17, PALETTE.muted, 'right');
+    text(ctx, 'E enter car · F punch · Q swap weapon · N skip 2h · Space handbrake · P pause · M mute', VIEW.width - 20, VIEW.height - 20, 17, PALETTE.muted, 'right');
     ctx.globalAlpha = 1;
   }
 
   // Low-health vignette.
   if (player.health < 35 && player.health > 0) {
     const a = ((35 - player.health) / 35) * 0.45 * (0.7 + 0.3 * Math.sin(time * 6));
-    const grad = ctx.createRadialGradient(VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.35, VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.75);
+    const grad = ctx.createRadialGradient(
+      VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.35,
+      VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.75,
+    );
     grad.addColorStop(0, 'rgba(255,0,0,0)');
     grad.addColorStop(1, `rgba(255,0,0,${a})`);
     ctx.fillStyle = grad;
@@ -305,7 +317,7 @@ function drawTitlePanel(ctx, save, time) {
     'WASD / Arrows — move on foot, drive a car',
     'Mouse — aim   ·   Click — shoot   ·   F — punch   ·   Q — swap weapon',
     'E — steal / enter / exit a car   ·   Space — handbrake',
-    'Shift — sprint   ·   P — pause   ·   M — mute',
+    'Shift — sprint   ·   N — skip 2 hours   ·   P — pause   ·   M — mute',
   ];
   panel(ctx, (VIEW.width - 620) / 2, 330, 620, 150, 14);
   lines.forEach((line, i) => text(ctx, line, VIEW.width / 2, 368 + i * 32, 21, PALETTE.text, 'center'));

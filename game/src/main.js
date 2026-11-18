@@ -11,7 +11,9 @@
 
 import { STEP } from './config.js';
 import { createWorld, EVENT_BUSTED, EVENT_SAVED, EVENT_WASTED } from './world.js';
-import { ACTION_CONFIRM, ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, ACTION_TIME, createInput } from './input.js';
+import {
+  ACTION_CONFIRM, ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, ACTION_TIME, createInput,
+} from './input.js';
 import { createRenderer } from './render.js';
 import { SCREEN_BUSTED, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE } from './hud.js';
 import { stageShot } from './shots.js';
@@ -94,8 +96,9 @@ function runGame() {
       world.state.time += 40;
       announce('Two hours pass.');
     }
-    if (screen === SCREEN_TITLE && actions & ACTION_CONFIRM) startGame();
-    else if (screen === SCREEN_PLAY && actions & ACTION_PAUSE) {
+    if (screen === SCREEN_TITLE && actions & ACTION_CONFIRM) {
+      startGame();
+    } else if (screen === SCREEN_PLAY && actions & ACTION_PAUSE) {
       screen = SCREEN_PAUSED;
       announce('Paused.');
     } else if (screen === SCREEN_PAUSED && actions & (ACTION_PAUSE | ACTION_CONFIRM)) {
@@ -135,7 +138,8 @@ function runGame() {
     // The title's living backdrop: the city runs while nobody plays.
     accumulator += dt;
     while (accumulator >= STEP) {
-      world.step(STEP, IDLE_INPUT, 0, { x: world.state.player.x, y: world.state.player.y }, null);
+      const aim = { x: world.state.player.x, y: world.state.player.y };
+      world.step(STEP, IDLE_INPUT, 0, aim, null);
       accumulator -= STEP;
     }
     const t = world.state.time;
@@ -168,7 +172,9 @@ function runGame() {
       accumulator = 0;
     }
 
-    const hintAlpha = screen === SCREEN_PLAY ? Math.max(0, Math.min(1, (HINT_SECONDS - playSeconds) / 4)) : 0;
+    const hintAlpha = screen === SCREEN_PLAY
+      ? Math.max(0, Math.min(1, (HINT_SECONDS - playSeconds) / 4))
+      : 0;
     renderer.draw(world.state, screen, save, penalty, world.state.time, hintAlpha);
   }
 

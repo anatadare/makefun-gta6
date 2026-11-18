@@ -1,8 +1,8 @@
 // The story: eight jobs from Lena the fixer and Otis the garage owner,
-// then repeatable fares for money, some of them rush jobs against the
+// then repeatable fares for money, one in four a rush job against the
 // clock. A mission is a list of steps, each one a kind the updater checks:
 // reach a place, steal a car, lose the cops, beat a clock, wreck a number
-// of cop cars. Steps can carry a `done` line, spoken when the step lands,
+// of cop cars. A step can carry a `done` line, spoken when the step lands,
 // and a `heatOnDone` that raises the wanted level the moment the step
 // completes, so a job can go loud halfway through. The world owns the
 // player and the police; this module only reads them through the context
@@ -11,6 +11,7 @@
 import { MISSIONS, POLICE } from './config.js';
 import { PLACES } from './city.js';
 
+// Fares run between these places, never twice to the same spot.
 const FARE_PLACES = ['taxiStand', 'marinaHotel', 'garage', 'docks', 'hideout', 'hospital', 'beach', 'policeStation', 'stadium'];
 
 const DEFS = [
@@ -18,7 +19,7 @@ const DEFS = [
     id: 'fare',
     title: 'First Fare',
     reward: 150,
-    intro: 'LENA: Mars, I need a driver. Taxi stand, downtown. Now.',
+    intro: 'LENA: Mars, I need a driver. Taxi stand, downtown. Go.',
     outro: 'LENA: Clean run. $150 is yours.',
     steps: [
       { kind: 'goto', place: 'taxiStand', text: 'Pick up the fare at the Taxi Stand', done: 'LENA: Got them. Marina Hotel, and step on it.' },
@@ -30,7 +31,7 @@ const DEFS = [
     id: 'wheels',
     title: 'Hot Wheels',
     reward: 300,
-    intro: 'OTIS: A Fuego is parked by the docks. Bring it to my garage. Few scratches.',
+    intro: 'OTIS: A Fuego is sitting by the docks. Bring it to my garage. Mind the paint.',
     outro: 'OTIS: Beautiful. $300, and the garage is open to you.',
     steps: [
       { kind: 'goto', place: 'docks', text: 'Find the Fuego at the Docks', done: 'OTIS: There it is. Take it and go.' },
@@ -119,8 +120,12 @@ export const MISSION_COUNT = DEFS.length;
 // The car a steal mission plants for the player: type, spot and colour.
 export function missionCarSpec(mission) {
   if (!mission) return null;
-  if (mission.id === 'wheels') return { type: 'fuego', x: PLACES.docks.x + 30, y: PLACES.docks.y - 40, color: '#ffd23f' };
-  if (mission.id === 'bigone') return { type: 'cometa', x: 2548, y: 860, color: '#e74c3c' };
+  if (mission.id === 'wheels') {
+    return { type: 'fuego', x: PLACES.docks.x + 30, y: PLACES.docks.y - 40, color: '#ffd23f' };
+  }
+  if (mission.id === 'bigone') {
+    return { type: 'cometa', x: 2548, y: 860, color: '#e74c3c' };
+  }
   return null;
 }
 
@@ -165,7 +170,9 @@ export function missionObjective(missions) {
     out.timer = Math.max(0, Math.ceil(missions.timer));
     out.timerTotal = step.seconds;
   }
-  if (step.kind === 'wreck') out.text = `${step.text} (${Math.min(missions.wrecks, step.count)}/${step.count})`;
+  if (step.kind === 'wreck') {
+    out.text = `${step.text} (${Math.min(missions.wrecks, step.count)}/${step.count})`;
+  }
   if (step.kind === 'steal' && missions.targetCar) {
     out.x = missions.targetCar.x;
     out.y = missions.targetCar.y;
@@ -199,7 +206,10 @@ export function startMission(missions, ctx) {
 
 function completeMission(missions, ctx) {
   const mission = currentMission(missions);
-  const events = [{ type: 'message', text: mission.outro }, { type: 'complete', mission }];
+  const events = [
+    { type: 'message', text: mission.outro },
+    { type: 'complete', mission },
+  ];
   missions.index += 1;
   missions.active = false;
   missions.step = 0;
@@ -239,25 +249,16 @@ function startFare(missions, ctx) {
   // One fare in four is a rush job: a clock, and better money.
   const rush = ctx.random.chance(0.25);
   const reward = rush ? ctx.random.int(150, 220) : ctx.random.int(50, 120);
-  missions.fare = {
-    from,
-    to,
-    reward,
-    rush,
-    steps: [
-      { kind: 'goto', place: from, text: `Fare waiting at ${PLACES[from].label}` },
-      rush
-        ? { kind: 'timed', place: to, seconds: 45, text: `RUSH: Drop the fare at ${PLACES[to].label}` }
-        : { kind: 'goto', place: to, text: `Drop the fare at ${PLACES[to].label}` },
-    ],
-  };
+  const pickup = { kind: 'goto', place: from, text: `Fare waiting at ${PLACES[from].label}` };
+  const drop = rush
+    ? { kind: 'timed', place: to, seconds: 45, text: `RUSH: Drop the fare at ${PLACES[to].label}` }
+    : { kind: 'goto', place: to, text: `Drop the fare at ${PLACES[to].label}` };
+  missions.fare = { from, to, reward, rush, steps: [pickup, drop] };
   missions.step = 0;
-  return [{
-    type: 'message',
-    text: rush
-      ? `LENA: RUSH FARE at ${PLACES[from].label}, going to ${PLACES[to].label}. 45 seconds. $${reward}.`
-      : `LENA: Fare at ${PLACES[from].label}, going to ${PLACES[to].label}. $${reward}.`,
-  }];
+  const text = rush
+    ? `LENA: RUSH FARE at ${PLACES[from].label}, going to ${PLACES[to].label}. 45 seconds. $${reward}.`
+    : `LENA: Fare at ${PLACES[from].label}, going to ${PLACES[to].label}. $${reward}.`;
+  return [{ type: 'message', text }];
 }
 
 function atPlace(player, place, radius) {
@@ -282,7 +283,10 @@ function advanceStep(missions, ctx) {
     const reward = missions.fare.reward;
     missions.fare = null;
     missions.fareCooldown = 5;
-    events.push({ type: 'message', text: `Fare done. +$${reward}.` }, { type: 'fare', reward });
+    events.push(
+      { type: 'message', text: `Fare done. +$${reward}.` },
+      { type: 'fare', reward },
+    );
     return events;
   }
   if (missions.step < currentMission(missions).steps.length) return events;

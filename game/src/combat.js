@@ -1,8 +1,8 @@
-// Combat: bullets and fists. Bullets fly straight, spark off buildings and
-// hurt whatever they touch (people and cars). A punch is a short arc in
-// front of the attacker. The scattergun fires a fan of pellets instead of
-// one round: five chances to hit, none of them flying far. Bullets live in
-// a ring buffer: firing takes the next slot whether it is free or still
+// Combat: bullets and fists. Bullets fly straight, spark off buildings
+// and hurt whatever they touch (people and cars). A punch is a short arc
+// in front of the attacker. The scattergun fires a fan of pellets instead
+// of one round: five chances to hit, none of them flying far. Bullets live
+// in a ring buffer: firing takes the next slot whether it is free or still
 // flying, so a long firefight never runs dry.
 
 import { PLAYER } from './config.js';
@@ -13,7 +13,10 @@ const POOL = 64;
 export function createCombat() {
   const bullets = [];
   for (let i = 0; i < POOL; i += 1) {
-    bullets.push({ active: false, x: 0, y: 0, vx: 0, vy: 0, from: 'player', damage: 0, life: 0 });
+    bullets.push({
+      active: false, x: 0, y: 0, vx: 0, vy: 0,
+      from: 'player', damage: 0, life: 0,
+    });
   }
   return { bullets, cursor: 0, sparks: [], flashes: [] };
 }

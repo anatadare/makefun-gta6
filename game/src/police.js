@@ -1,15 +1,18 @@
-// The Solmara PD: a wanted level that grows with crime and fades when the
-// player hides, cop cars that chase and ram, and foot cops who run the
-// player down, shoot back at high heat, and try to make an arrest up close.
-// The pursuit gets sharper with the stars: cops aim further ahead of a
-// moving target, swing for the rear quarter up close, keep out of each
-// other's way instead of piling onto the same bumper, and from four stars
-// the veterans take over with steadier aim.
+// The Solmara PD. Crime adds heat, heat sets the star level, and the star
+// level decides how hard the law comes down: patrol cars that chase and
+// ram, foot cops who run the player down and shoot back at three stars,
+// and at four stars the veterans with steadier aim. The pursuit is smart:
+// cops aim ahead of a moving target, swing for the rear quarter up close
+// to spin the car, and fan out instead of piling onto one bumper. Lose
+// the tail and the heat fades; the hideout is a safe house where it fades
+// three times faster and no cop can spot or arrest the player.
 
 import { POLICE, WORLD } from './config.js';
 import { PLACES, randomRoadPoint, resolveCircle } from './city.js';
 import { carRadius, carSpeed, createCar, driveCar } from './vehicles.js';
 
+// A cop within this range has the player in sight; further out they are
+// hunting blind. Beyond the despawn ranges a unit gives up and goes home.
 const SEEN_RADIUS = 560;
 const DESPAWN_CAR = 1300;
 const DESPAWN_FOOT = 1100;
@@ -23,7 +26,16 @@ export function starsFromHeat(heat) {
 }
 
 export function createPolice(city, random) {
-  return { heat: 0, stars: 0, copCars: [], footCops: [], bust: 0, lastSeenAt: -99, city, random };
+  return {
+    heat: 0,
+    stars: 0,
+    copCars: [],
+    footCops: [],
+    bust: 0,
+    lastSeenAt: -99,
+    city,
+    random,
+  };
 }
 
 export function addHeat(police, points, now) {
@@ -40,11 +52,12 @@ export function clearWanted(police) {
   police.footCops.length = 0;
 }
 
+// A fresh patrol car starts beyond sight, so the player can break away
+// and hide instead of being spotted the instant it appears.
 function spawnCopCar(police, player) {
-  // Outside the seen radius, so a fresh cop never spots the player the
-  // instant it appears: the player can break away and hide.
   const spot = randomRoadPoint(police.random, player.x, player.y, 650, 900);
-  const car = createCar('interceptor', spot.x, spot.y, Math.atan2(player.y - spot.y, player.x - spot.x), '#f2f2f2', 'cop');
+  const angle = Math.atan2(player.y - spot.y, player.x - spot.x);
+  const car = createCar('interceptor', spot.x, spot.y, angle, '#f2f2f2', 'cop');
   car.stuckAt = 0;
   police.copCars.push(car);
   return car;
@@ -66,6 +79,7 @@ function spawnFootCop(police, player) {
   return cop;
 }
 
+// How hard to turn toward a point: the angle gap, scaled and clamped.
 function steerAngle(car, tx, ty, gain) {
   const want = Math.atan2(ty - car.y, tx - car.x);
   let diff = want - car.angle;
@@ -75,7 +89,8 @@ function steerAngle(car, tx, ty, gain) {
 }
 
 // Where a chasing cop aims: ahead of the target by its velocity, further
-// ahead as the heat rises; close in, at the rear quarter, to spin the car.
+// ahead as the heat rises. Close in on a fast car, at the rear quarter,
+// to spin it out.
 function chaseTarget(police, car, player, playerCar) {
   const lead = POLICE.leadBase + POLICE.leadPerStar * police.stars;
   const vx = playerCar ? playerCar.vx : 0;
@@ -87,7 +102,7 @@ function chaseTarget(police, car, player, playerCar) {
     const heading = Math.atan2(vy, vx);
     const side = Math.sign((car.x - player.x) * -Math.sin(heading) + (car.y - player.y) * Math.cos(heading)) || 1;
     return {
-      x: tx - Math.cos(heading) * POLICE.pitOffset + -Math.sin(heading) * POLICE.pitOffset * side * 0.5,
+      x: tx - Math.cos(heading) * POLICE.pitOffset - Math.sin(heading) * POLICE.pitOffset * side * 0.5,
       y: ty - Math.sin(heading) * POLICE.pitOffset + Math.cos(heading) * POLICE.pitOffset * side * 0.5,
     };
   }
@@ -110,15 +125,17 @@ function separationSteer(police, car) {
   return Math.max(-0.5, Math.min(0.5, push));
 }
 
+// The trail is cold: cruise the area instead of driving straight at the
+// hideout, and back off if the search drifted too close.
 function searchTarget(police, car, player, now) {
-  // The trail is cold: cruise the area instead of driving straight at the
-  // hideout, and back off if the search drifted too close.
   const d = Math.hypot(car.x - player.x, car.y - player.y);
   if (d < 350) {
     const away = Math.atan2(car.y - player.y, car.x - player.x);
     return { x: car.x + Math.cos(away) * 500, y: car.y + Math.sin(away) * 500 };
   }
-  if (!car.search || now - (car.searchAt || 0) > 6 || Math.hypot(car.search.x - car.x, car.search.y - car.y) < 60) {
+  const stale = !car.search || now - (car.searchAt || 0) > 6;
+  const reached = car.search && Math.hypot(car.search.x - car.x, car.search.y - car.y) < 60;
+  if (stale || reached) {
     car.search = randomRoadPoint(police.random, player.x, player.y, 500, 900);
     car.searchAt = now;
   }
@@ -130,8 +147,8 @@ function searchTarget(police, car, player, now) {
 export function updatePolice(police, dt, now, player, playerCar, allCars, hooks) {
   const stars = police.stars;
   const wanted = stars > 0;
-  // The hideout is a safe house: inside it the cops lose the trail, they
-  // cannot spot the player or make an arrest, and the heat fades fast.
+  // Inside the hideout the cops lose the trail: they cannot spot the
+  // player or make an arrest, and the heat fades fast.
   const hidden = Math.hypot(player.x - PLACES.hideout.x, player.y - PLACES.hideout.y) < 250;
 
   // Keep the response matched to the wanted level.
@@ -173,11 +190,13 @@ export function updatePolice(police, dt, now, player, playerCar, allCars, hooks)
         car.vy = 0;
         car.stuckAt = 0;
       }
-    } else car.stuckAt = 0;
+    } else {
+      car.stuckAt = 0;
+    }
   }
 
-  // Foot cops run at the player and, at three stars and up, shoot. At four
-  // stars the veterans shoot straighter.
+  // Foot cops run at the player and, at three stars and up, shoot. At
+  // four stars the veterans shoot straighter.
   const spread = stars >= POLICE.veteranStars ? POLICE.spreadVeteran : POLICE.spreadRookie;
   for (let i = police.footCops.length - 1; i >= 0; i -= 1) {
     const cop = police.footCops[i];
@@ -232,10 +251,11 @@ export function updatePolice(police, dt, now, player, playerCar, allCars, hooks)
     return;
   }
 
-  // Heat fades once no cop has seen the player for a while. At the hideout
-  // it fades three times faster: the safe house does its job.
-  if (anyNear) police.lastSeenAt = now;
-  else if (wanted && now - police.lastSeenAt > POLICE.heatDecayDelay) {
+  // Heat fades once no cop has seen the player for a while. At the
+  // hideout it fades three times faster: the safe house does its job.
+  if (anyNear) {
+    police.lastSeenAt = now;
+  } else if (wanted && now - police.lastSeenAt > POLICE.heatDecayDelay) {
     police.heat = Math.max(0, police.heat - POLICE.heatDecayRate * (hidden ? 3 : 1) * dt);
     police.stars = starsFromHeat(police.heat);
   }

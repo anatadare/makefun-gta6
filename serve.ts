@@ -15,7 +15,8 @@ const root = resolve(fileURLToPath(new URL('./game', import.meta.url)));
 function pickPort() {
   const args = process.argv.slice(2);
   const flag = args.indexOf('--port');
-  const candidates = [flag === -1 ? undefined : args[flag + 1], process.env.PORT, '8080'];
+  const fromFlag = flag === -1 ? undefined : args[flag + 1];
+  const candidates = [fromFlag, process.env.PORT, '8080'];
   for (const raw of candidates) {
     if (raw === undefined) continue;
     const value = Number(raw);
@@ -48,6 +49,8 @@ const MIME: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+// Turn a request URL into a file under game/, or null when it escapes the
+// root or cannot be parsed. A trailing slash means index.html.
 function resolveInside(requestPath: string): string | null {
   let pathname: string;
   try {

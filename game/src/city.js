@@ -1,11 +1,13 @@
-// SOLMARA's city, grown from a seed: streets on a grid, blocks that hold
+// Solmara's city, grown from a seed: streets on a grid, blocks holding
 // buildings, a park, a plaza, the docks, a market and a stadium, palms
 // along the walks, umbrellas on the sand. The generator runs once per
-// world; every other module asks this one where things are and what is solid.
+// world; every other module asks this one where things are and what is
+// solid. The generator draws from the seeded stream in a fixed order, so
+// the same seed always grows the same city.
 
 import { BEACH, BUILDING_COLORS, ROADS, STALL_COLORS, WORLD } from './config.js';
 
-// Named places, all on roads so a mission marker is somewhere a car can go.
+// Named places, all on roads, so a mission marker is somewhere a car can go.
 export const PLACES = {
   start: { x: 1000, y: 1400, label: 'Downtown' },
   taxiStand: { x: 1000, y: 960, label: 'Taxi Stand' },
@@ -35,7 +37,7 @@ export const STASHES = [
 const KERB = ROADS.halfWidth + ROADS.sidewalk;
 
 // The special blocks: park, plaza, docks, market and stadium, keyed by
-// their corner (the crossing at the block's top-left).
+// the crossing at the block's top-left corner.
 const SPECIAL_BLOCKS = {
   '1400,1000': 'park',
   '1000,600': 'plaza',
@@ -45,41 +47,49 @@ const SPECIAL_BLOCKS = {
 };
 
 // One block's inner rectangle, inside the sidewalks.
-function innerRect(x0, x1, y0, y1) {
-  return { x: x0 + KERB, y: y0 + KERB, w: x1 - x0 - KERB * 2, h: y1 - y0 - KERB * 2 };
+function blockInner(x0, x1, y0, y1) {
+  return {
+    x: x0 + KERB,
+    y: y0 + KERB,
+    w: x1 - x0 - KERB * 2,
+    h: y1 - y0 - KERB * 2,
+  };
 }
 
-// Fill a block with buildings on a jittered sub-grid: one, two or four
-// footprints depending on the block's size and the seed.
-function raiseBuildings(random, rect, seedBase) {
+// How a block's buildings are laid out: one big footprint, two side by
+// side, or four in quadrants. Each cell is [x, y, w, h] in fractions.
+const LAYOUTS = [
+  [[0, 0, 1, 1]],
+  [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]],
+  [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]],
+];
+
+// Fill a block with buildings on a jittered sub-grid.
+function placeBuildings(random, rect, seedBase) {
   const out = [];
   const inset = 14;
   const gap = 12;
   const height = random.int(1, 3);
-  const layout = random.int(0, 2);
-  const cells = layout === 0
-    ? [[0, 0, 1, 1]]
-    : layout === 1
-      ? [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]]
-      : [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]];
-  cells.forEach(([cx, cy, cw, ch], i) => {
-    const w = rect.w * cw - inset * 2 - gap * (cw < 1 ? 0.5 : 0);
-    const h = rect.h * ch - inset * 2 - gap * (ch < 1 ? 0.5 : 0);
+  const cells = LAYOUTS[random.int(0, 2)];
+  for (let i = 0; i < cells.length; i += 1) {
+    const [cx, cy, cw, ch] = cells[i];
+    const baseW = rect.w * cw - inset * 2 - gap * (cw < 1 ? 0.5 : 0);
+    const baseH = rect.h * ch - inset * 2 - gap * (ch < 1 ? 0.5 : 0);
     out.push({
       x: rect.x + rect.w * cx + inset + (cx > 0 ? gap / 2 : 0),
       y: rect.y + rect.h * cy + inset + (cy > 0 ? gap / 2 : 0),
-      w: w * random.range(0.85, 1),
-      h: h * random.range(0.7, 1),
+      w: baseW * random.range(0.85, 1),
+      h: baseH * random.range(0.7, 1),
       color: random.pick(BUILDING_COLORS),
       seed: seedBase + i,
       height,
     });
-  });
+  }
   return out;
 }
 
 // Crates stacked around the docks: cover in a shootout, solid to a car.
-function scatterCrates(random, rect) {
+function stackCrates(random, rect) {
   const colors = ['#b5651d', '#5d7fa3', '#7a9b57', '#a35d8c'];
   const crates = [];
   for (let i = 0; i < 9; i += 1) {
@@ -95,7 +105,7 @@ function scatterCrates(random, rect) {
 }
 
 // Market stalls: two rows of little awnings with a walkway between them.
-function raiseStalls(random, rect) {
+function setUpStalls(random, rect) {
   const stalls = [];
   const cols = 4;
   const rows = 2;
@@ -116,7 +126,7 @@ function raiseStalls(random, rect) {
 // The stadium: an oval running track around a green pitch, with stands on
 // the long sides. The track is flat ground (cars can cut across it); the
 // stands are solid.
-function buildStadium(rect) {
+function layOutStadium(rect) {
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
   const track = { x: cx, y: cy, rx: rect.w / 2 - 8, ry: rect.h / 2 - 8 };
@@ -128,7 +138,7 @@ function buildStadium(rect) {
   return { track, pitch, stands };
 }
 
-function scatterPalms(random, rect, count, palms) {
+function plantPalms(random, rect, count, palms) {
   for (let i = 0; i < count; i += 1) {
     palms.push({
       x: rect.x + random.range(14, Math.max(15, rect.w - 14)),
@@ -143,38 +153,44 @@ export function buildCity(random) {
   const buildings = [];
   const palms = [];
   const verticals = ROADS.vertical;
-  // The 2300 avenue sits too close to 2200 for a block between them.
-  const horizontals = ROADS.horizontal.filter((y, i, list) => i === 0 || y - list[i - 1] >= 200);
+  // The 2300 avenue sits too close to 2200 for a block between them, so
+  // streets closer than 200 apart collapse into one.
+  const horizontals = [];
+  for (const y of ROADS.horizontal) {
+    if (horizontals.length === 0 || y - horizontals[horizontals.length - 1] >= 200) {
+      horizontals.push(y);
+    }
+  }
 
   let index = 0;
-  for (const vx of verticals.slice(0, -1)) {
-    for (const hy of horizontals.slice(0, -1)) {
-      const x1 = verticals[verticals.indexOf(vx) + 1];
-      const y1 = horizontals[horizontals.indexOf(hy) + 1];
-      const rect = innerRect(vx, x1, hy, y1);
+  for (let vi = 0; vi < verticals.length - 1; vi += 1) {
+    for (let hi = 0; hi < horizontals.length - 1; hi += 1) {
+      const vx = verticals[vi];
+      const hy = horizontals[hi];
+      const rect = blockInner(vx, verticals[vi + 1], hy, horizontals[hi + 1]);
       if (rect.w < 120 || rect.h < 120) continue;
       index += 1;
       const kind = SPECIAL_BLOCKS[`${vx},${hy}`] || 'buildings';
       const block = { ...rect, kind, index };
       if (kind === 'park') {
         block.pond = { x: rect.x + rect.w * 0.5, y: rect.y + rect.h * 0.55, r: 42 };
-        scatterPalms(random, rect, 7, palms);
+        plantPalms(random, rect, 7, palms);
       } else if (kind === 'plaza') {
         block.fountain = { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2, r: 30 };
-        scatterPalms(random, rect, 6, palms);
+        plantPalms(random, rect, 6, palms);
       } else if (kind === 'docks') {
-        block.crates = scatterCrates(random, rect);
+        block.crates = stackCrates(random, rect);
       } else if (kind === 'market') {
-        block.stalls = raiseStalls(random, rect);
-        scatterPalms(random, rect, 3, palms);
+        block.stalls = setUpStalls(random, rect);
+        plantPalms(random, rect, 3, palms);
       } else if (kind === 'stadium') {
-        const ground = buildStadium(rect);
+        const ground = layOutStadium(rect);
         block.track = ground.track;
         block.pitch = ground.pitch;
         block.stands = ground.stands;
-        scatterPalms(random, rect, 2, palms);
+        plantPalms(random, rect, 2, palms);
       } else {
-        block.buildings = raiseBuildings(random, rect, index * 7 + 1);
+        block.buildings = placeBuildings(random, rect, index * 7 + 1);
         buildings.push(...block.buildings);
       }
       blocks.push(block);
@@ -187,13 +203,21 @@ export function buildCity(random) {
       if (horizontals.some((h) => Math.abs(h - y) < 90)) continue;
       for (const side of [-1, 1]) {
         if (random.chance(0.6)) {
-          palms.push({ x: x + side * (ROADS.halfWidth + 13), y: y + random.range(-20, 20), s: random.range(0.8, 1.15) });
+          palms.push({
+            x: x + side * (ROADS.halfWidth + 13),
+            y: y + random.range(-20, 20),
+            s: random.range(0.8, 1.15),
+          });
         }
       }
     }
   }
   for (let x = 80; x < WORLD.width; x += 130) {
-    palms.push({ x: x + random.range(-20, 20), y: BEACH.sandY + 26, s: random.range(0.9, 1.3) });
+    palms.push({
+      x: x + random.range(-20, 20),
+      y: BEACH.sandY + 26,
+      s: random.range(0.9, 1.3),
+    });
   }
 
   // Beach umbrellas and towels scattered down the sand.
@@ -261,15 +285,24 @@ export function resolveCircle(city, entity, r) {
     const dist = Math.hypot(dx, dy);
     if (dist === 0) {
       // Dead centre inside the box: leave by the nearest face.
-      const exits = [
-        { d: entity.x - solid.x, nx: -1, ny: 0, set: () => { entity.x = solid.x - r; } },
-        { d: solid.x + solid.w - entity.x, nx: 1, ny: 0, set: () => { entity.x = solid.x + solid.w + r; } },
-        { d: entity.y - solid.y, nx: 0, ny: -1, set: () => { entity.y = solid.y - r; } },
-        { d: solid.y + solid.h - entity.y, nx: 0, ny: 1, set: () => { entity.y = solid.y + solid.h + r; } },
-      ];
-      exits.sort((a, b) => a.d - b.d);
-      exits[0].set();
-      pushed = { nx: exits[0].nx, ny: exits[0].ny };
+      const left = entity.x - solid.x;
+      const right = solid.x + solid.w - entity.x;
+      const top = entity.y - solid.y;
+      const bottom = solid.y + solid.h - entity.y;
+      const nearest = Math.min(left, right, top, bottom);
+      if (nearest === left) {
+        entity.x = solid.x - r;
+        pushed = { nx: -1, ny: 0 };
+      } else if (nearest === right) {
+        entity.x = solid.x + solid.w + r;
+        pushed = { nx: 1, ny: 0 };
+      } else if (nearest === top) {
+        entity.y = solid.y - r;
+        pushed = { nx: 0, ny: -1 };
+      } else {
+        entity.y = solid.y + solid.h + r;
+        pushed = { nx: 0, ny: 1 };
+      }
     } else {
       const nx = dx / dist;
       const ny = dy / dist;
@@ -278,16 +311,24 @@ export function resolveCircle(city, entity, r) {
       pushed = { nx, ny };
     }
   }
-  const edge = (cond, set, normal) => {
-    if (cond) {
-      set();
-      pushed = pushed ?? normal;
-    }
-  };
-  edge(entity.y + r > BEACH.waterY, () => { entity.y = BEACH.waterY - r; }, { nx: 0, ny: -1 });
-  edge(entity.x - r < 0, () => { entity.x = r; }, { nx: 1, ny: 0 });
-  edge(entity.x + r > WORLD.width, () => { entity.x = WORLD.width - r; }, { nx: -1, ny: 0 });
-  edge(entity.y - r < 0, () => { entity.y = r; }, { nx: 0, ny: 1 });
+  // The water and the world edge clamp the position too, but only the
+  // first push of the step is reported back.
+  if (entity.y + r > BEACH.waterY) {
+    entity.y = BEACH.waterY - r;
+    if (!pushed) pushed = { nx: 0, ny: -1 };
+  }
+  if (entity.x - r < 0) {
+    entity.x = r;
+    if (!pushed) pushed = { nx: 1, ny: 0 };
+  }
+  if (entity.x + r > WORLD.width) {
+    entity.x = WORLD.width - r;
+    if (!pushed) pushed = { nx: -1, ny: 0 };
+  }
+  if (entity.y - r < 0) {
+    entity.y = r;
+    if (!pushed) pushed = { nx: 0, ny: 1 };
+  }
   return pushed;
 }
 
@@ -295,8 +336,11 @@ export function nearestIntersection(city, x, y) {
   let best = city.intersections[0];
   let bestD = Infinity;
   for (const p of city.intersections) {
-    const d = (p.x - x) ** 2 + (p.y - y) ** 2;
-    if (d < bestD) { bestD = d; best = p; }
+    const d = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
+    if (d < bestD) {
+      bestD = d;
+      best = p;
+    }
   }
   return best;
 }
@@ -317,6 +361,16 @@ export function randomRoadPoint(random, cx, cy, minDist, maxDist) {
     const d = Math.hypot(x - cx, y - cy);
     if (d >= minDist && d <= maxDist) return { x, y };
   }
-  const crossings = ROADS.vertical.flatMap((x) => ROADS.horizontal.map((y) => ({ x, y })));
-  return nearestIntersection({ intersections: crossings }, cx, cy);
+  let best = null;
+  let bestD = Infinity;
+  for (const x of ROADS.vertical) {
+    for (const y of ROADS.horizontal) {
+      const d = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+      if (d < bestD) {
+        bestD = d;
+        best = { x, y };
+      }
+    }
+  }
+  return best;
 }

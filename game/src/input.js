@@ -1,7 +1,8 @@
-// Keyboard and mouse, as one binding table. Held keys drive movement and
-// driving; one-shot presses (start, pause, enter a car, punch, swap weapon,
-// mute) set a bit that the loop takes once per frame, so a press between
-// frames is never lost. The mouse aims on foot and fires while held.
+// Keyboard and mouse, behind one binding table. Held keys drive movement
+// and driving; one-shot presses (confirm, pause, enter a car, punch, swap
+// weapon, skip time, mute, restart) queue a bit the loop takes once per
+// frame, so a press that lands between frames is never lost. The mouse
+// aims on foot and fires while held down.
 
 export const ACTION_CONFIRM = 1;
 export const ACTION_PAUSE = 2;
@@ -12,8 +13,8 @@ export const ACTION_RESTART = 32;
 export const ACTION_SWAP = 64;
 export const ACTION_TIME = 128;
 
-// code -> what it does. 'hold' keys set a flag while down; 'tap' keys queue
-// an action bit on the first press (repeats ignored).
+// code -> what it does. A 'hold' key sets a flag while it is down; a 'tap'
+// key queues an action bit on the first press (key repeats ignored).
 const BINDINGS = {
   ArrowUp: { hold: 'up' },
   KeyW: { hold: 'up' },
@@ -38,9 +39,12 @@ const BINDINGS = {
 };
 
 export function createInput(target) {
-  const held = { up: false, down: false, left: false, right: false, sprint: false, handbrake: false };
+  const held = {
+    up: false, down: false, left: false, right: false,
+    sprint: false, handbrake: false,
+  };
   const mouse = { x: 0, y: 0, down: false };
-  let actions = 0;
+  let queued = 0;
 
   function trackPointer(event) {
     const rect = target.getBoundingClientRect();
@@ -50,31 +54,35 @@ export function createInput(target) {
 
   // Losing focus lets go of everything: no stuck keys after alt-tab.
   function releaseAll() {
-    for (const key of Object.keys(held)) held[key] = false;
+    for (const name of Object.keys(held)) held[name] = false;
     mouse.down = false;
   }
 
-  window.addEventListener('keydown', (event) => {
+  function onKeyDown(event) {
     const binding = BINDINGS[event.code];
     if (!binding) return;
     if (binding.hold) held[binding.hold] = true;
-    if (binding.tap && !event.repeat) actions |= binding.tap;
+    if (binding.tap && !event.repeat) queued |= binding.tap;
     event.preventDefault();
-  });
-  window.addEventListener('keyup', (event) => {
+  }
+
+  function onKeyUp(event) {
     const binding = BINDINGS[event.code];
     if (binding && binding.hold) held[binding.hold] = false;
-  });
-  window.addEventListener('blur', releaseAll);
-  target.addEventListener('pointermove', trackPointer);
-  target.addEventListener('pointerdown', (event) => {
+  }
+
+  function onPointerDown(event) {
     trackPointer(event);
     mouse.down = true;
-    actions |= ACTION_CONFIRM;
-  });
-  window.addEventListener('pointerup', () => {
-    mouse.down = false;
-  });
+    queued |= ACTION_CONFIRM;
+  }
+
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', releaseAll);
+  window.addEventListener('pointerup', () => { mouse.down = false; });
+  target.addEventListener('pointermove', trackPointer);
+  target.addEventListener('pointerdown', onPointerDown);
 
   return {
     mouse,
@@ -99,8 +107,8 @@ export function createInput(target) {
     },
     // Take the queued one-shot actions and clear them.
     takeActions() {
-      const taken = actions;
-      actions = 0;
+      const taken = queued;
+      queued = 0;
       return taken;
     },
   };

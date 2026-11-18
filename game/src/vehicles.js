@@ -36,12 +36,15 @@ export function carRadius(car) {
   return car.type.length * 0.42;
 }
 
-// Split a car's velocity into forward speed and sideways slide, relative to
-// its heading; the inverse puts them back together after the step.
+// Split a car's velocity into forward speed and sideways slide, relative
+// to its heading; the inverse puts them back together after the step.
 function splitVelocity(car) {
   const fx = Math.cos(car.angle);
   const fy = Math.sin(car.angle);
-  return { forward: car.vx * fx + car.vy * fy, lateral: -car.vx * fy + car.vy * fx };
+  return {
+    forward: car.vx * fx + car.vy * fy,
+    lateral: car.vy * fx - car.vx * fy,
+  };
 }
 
 function joinVelocity(car, forward, lateral) {
@@ -68,8 +71,9 @@ export function driveCar(car, dt, throttle, steer, handbrake, city) {
   const spec = car.type;
   let { forward, lateral } = splitVelocity(car);
 
-  if (throttle > 0) forward += spec.accel * throttle * dt;
-  else if (throttle < 0) {
+  if (throttle > 0) {
+    forward += spec.accel * throttle * dt;
+  } else if (throttle < 0) {
     // Braking while rolling forward; reversing once nearly stopped.
     const braking = forward > 5 ? 1.6 : 0.55;
     forward += spec.accel * braking * throttle * dt;

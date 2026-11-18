@@ -10,15 +10,27 @@ import { CAR_TYPES, PLAYER, POLICE } from './config.js';
 import { buildCity, PLACES, pointOnRoad, STASHES } from './city.js';
 import { ACTION_ENTER, ACTION_PUNCH, ACTION_SWAP } from './input.js';
 import { createRandom } from './random.js';
-import { canFire, canPunch, createPlayer, enterCar, exitCar, healPlayer, hurtPlayer, swapWeapon, walkPlayer, WEAPON_NAMES, WEAPON_SCATTER } from './player.js';
+import {
+  canFire, canPunch, createPlayer, enterCar, exitCar, healPlayer, hurtPlayer,
+  swapWeapon, walkPlayer, WEAPON_NAMES, WEAPON_SCATTER,
+} from './player.js';
 import { createTraffic, nearestStealable, updateTraffic } from './traffic.js';
 import { createPedestrians, knockDown, scarePeds, updatePedestrians } from './pedestrians.js';
 import { addHeat, clearWanted, createPolice, starsFromHeat, updatePolice } from './police.js';
 import { createCombat, fireBullet, fireSpread, meleeTarget, updateBullets } from './combat.js';
-import { countWreck, createMissions, currentMission, MISSION_COUNT, missionCarSpec, startMission, updateMissions } from './missions.js';
+import {
+  countWreck, createMissions, currentMission, MISSION_COUNT, missionCarSpec,
+  startMission, updateMissions,
+} from './missions.js';
 import { carRadius, carSpeed, createCar, driveCar } from './vehicles.js';
-import { addShake, addSkid, createEffects, spawnDust, spawnEngineSmoke, spawnExplosion, spawnMuzzleSmoke, spawnTireSmoke, updateEffects } from './effects.js';
-import { playCrash, playExplosion, playPayday, playPickup, playScatter, playShot, playSkid, playWanted, setEngine, setSiren } from './audio.js';
+import {
+  addShake, addSkid, createEffects, spawnDust, spawnEngineSmoke, spawnExplosion,
+  spawnMuzzleSmoke, spawnTireSmoke, updateEffects,
+} from './effects.js';
+import {
+  playCrash, playExplosion, playPayday, playPickup, playScatter, playShot,
+  playSkid, playWanted, setEngine, setSiren,
+} from './audio.js';
 
 export const EVENT_WASTED = 1;
 export const EVENT_BUSTED = 2;
@@ -135,7 +147,9 @@ export function createWorld(seed, save) {
     if (state.missions.storyDone || state.missions.active) return;
     if (!currentMission(state.missions)) return;
     const events = startMission(state.missions, missionContext());
-    for (const e of events) if (e.type === 'message') addMessage(e.text);
+    for (const e of events) {
+      if (e.type === 'message') addMessage(e.text);
+    }
   }
 
   function respawn(kind) {
@@ -169,7 +183,10 @@ export function createWorld(seed, save) {
     player.fireAt = now;
     const angle = player.aimAngle;
     if (player.weapon === WEAPON_SCATTER) {
-      fireSpread(state.combat, player.x, player.y, angle, 'player', PLAYER.scatterDamage, PLAYER.scatterPellets, PLAYER.scatterSpread);
+      fireSpread(
+        state.combat, player.x, player.y, angle, 'player',
+        PLAYER.scatterDamage, PLAYER.scatterPellets, PLAYER.scatterSpread,
+      );
       spawnMuzzleSmoke(state.effects, player.x, player.y, angle);
       if (audio) playScatter(audio);
     } else {
@@ -177,7 +194,9 @@ export function createWorld(seed, save) {
       if (audio) playShot(audio);
     }
     scarePeds(state.peds, player.x, player.y, 320, now);
-    if (nearestCopDistance() < 600 || state.police.stars > 0) addHeat(state.police, POLICE.crimeShoot, now);
+    if (nearestCopDistance() < 600 || state.police.stars > 0) {
+      addHeat(state.police, POLICE.crimeShoot, now);
+    }
   }
 
   function handleOnFoot(dt, input, actions, aimWorld, audio, now) {
@@ -199,10 +218,14 @@ export function createWorld(seed, save) {
       player.punchAt = now;
       const targets = [];
       for (const ped of state.peds.peds) {
-        if (ped.state !== 'down') targets.push({ x: ped.x, y: ped.y, radius: 14, kind: 'ped', ref: ped });
+        if (ped.state !== 'down') {
+          targets.push({ x: ped.x, y: ped.y, radius: 14, kind: 'ped', ref: ped });
+        }
       }
       for (const cop of police.footCops) {
-        if (!cop.dead) targets.push({ x: cop.x, y: cop.y, radius: 14, kind: 'cop', ref: cop });
+        if (!cop.dead) {
+          targets.push({ x: cop.x, y: cop.y, radius: 14, kind: 'cop', ref: cop });
+        }
       }
       const hit = meleeTarget(player, player.aimAngle, PLAYER.punchRange, targets);
       if (hit && hit.kind === 'ped') {
@@ -318,12 +341,16 @@ export function createWorld(seed, save) {
     const police = state.police;
     const targets = [];
     for (const ped of state.peds.peds) {
-      if (ped.state !== 'down') targets.push({ x: ped.x, y: ped.y, radius: 13, kind: 'ped', ref: ped, dead: false });
+      if (ped.state !== 'down') {
+        targets.push({ x: ped.x, y: ped.y, radius: 13, kind: 'ped', ref: ped, dead: false });
+      }
     }
     for (const cop of police.footCops) {
       targets.push({ x: cop.x, y: cop.y, radius: 13, kind: 'cop', ref: cop, dead: cop.dead });
     }
-    if (player.onFoot) targets.push({ x: player.x, y: player.y, radius: PLAYER.radius, kind: 'player', ref: player, dead: false });
+    if (player.onFoot) {
+      targets.push({ x: player.x, y: player.y, radius: PLAYER.radius, kind: 'player', ref: player, dead: false });
+    }
     for (const car of allCars()) {
       if (car === player.car) continue;
       targets.push({ x: car.x, y: car.y, radius: carRadius(car), kind: 'car', ref: car, dead: car.dead });
@@ -358,13 +385,15 @@ export function createWorld(seed, save) {
       if (spec) {
         state.missions.targetCar = spawnMissionCar(spec.type, spec.x, spec.y, spec.color);
         state.missions.step = 0;
-        addMessage(`OTIS: You wrecked it! There is another ${spec.type === 'cometa' ? 'Cometa at the stadium' : 'Fuego at the docks'}.`);
+        const where = spec.type === 'cometa' ? 'Cometa at the stadium' : 'Fuego at the docks';
+        addMessage(`OTIS: You wrecked it! There is another ${where}.`);
       }
     }
     const missionEvents = updateMissions(state.missions, dt, missionContext());
     for (const e of missionEvents) {
-      if (e.type === 'message') addMessage(e.text);
-      else if (e.type === 'complete') {
+      if (e.type === 'message') {
+        addMessage(e.text);
+      } else if (e.type === 'complete') {
         player.money += e.mission.reward;
         save.totalEarned = (save.totalEarned || 0) + e.mission.reward;
         save.money = player.money;
@@ -445,8 +474,11 @@ export function createWorld(seed, save) {
   function updatePrompt() {
     const player = state.player;
     if (player.onFoot) {
-      const car = nearestStealable(state.traffic, player.x, player.y, ENTER_RANGE)
-        ?? (state.missionCar && Math.hypot(state.missionCar.x - player.x, state.missionCar.y - player.y) < ENTER_RANGE ? state.missionCar : null);
+      const nearMission = state.missionCar
+        && Math.hypot(state.missionCar.x - player.x, state.missionCar.y - player.y) < ENTER_RANGE
+        ? state.missionCar
+        : null;
+      const car = nearestStealable(state.traffic, player.x, player.y, ENTER_RANGE) ?? nearMission;
       state.prompt = car ? `Press E to steal the ${car.type.name}` : '';
     } else if (player.car) {
       state.prompt = `Press E to exit the ${player.car.type.name}`;

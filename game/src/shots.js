@@ -69,7 +69,8 @@ function driveFor(world, seconds, corridor) {
   for (let i = 0; i < seconds / STEP; i += 1) {
     // Keep the staged stretch clear: traffic keeps wandering into it.
     if (corridor) clearCorridor(world, corridor.x0, corridor.x1, corridor.y, corridor.halfHeight);
-    world.step(STEP, roadPilot(world), 0, { x: world.state.player.x + 400, y: world.state.player.y }, null);
+    const aim = { x: world.state.player.x + 400, y: world.state.player.y };
+    world.step(STEP, roadPilot(world), 0, aim, null);
   }
   if (corridor) clearCorridor(world, corridor.x0, corridor.x1, corridor.y, corridor.halfHeight);
 }
@@ -141,7 +142,11 @@ function stageFoot(world) {
   const cop = world.state.police.footCops[0];
   // Walk west, away from the stand, so the pickup objective stays live.
   for (let i = 0; i < 0.5 / STEP; i += 1) {
-    const input = { ...IDLE, move: () => ({ x: -0.6, y: 0 }), mouse: { x: 0, y: 0, down: false } };
+    const input = {
+      ...IDLE,
+      move: () => ({ x: -0.6, y: 0 }),
+      mouse: { x: 0, y: 0, down: false },
+    };
     world.step(STEP, input, 0, { x: cop.x, y: cop.y }, null);
   }
   // A scattergun blast straight at the cop while he is closing in, so the

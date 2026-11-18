@@ -1,15 +1,16 @@
 // Pedestrians: the people of Solmara. They walk the sidewalks, turn at
 // crossings, pause now and then to look around, scatter when shots ring
 // out, and go down when a car hits them. A few lie on the sand by the
-// umbrellas, soaking up the sun until trouble finds them. The market stalls
-// have vendors who mind their counters all day, and joggers run the
-// beachfront path at a pace no walker keeps up with.
+// umbrellas, soaking up the sun until trouble finds them. The market
+// stalls have vendors who mind their counters all day, and joggers run
+// the beachfront path at a pace no walker keeps up with.
 
 import { PEDS, PED_SHIRTS, ROADS } from './config.js';
 import { randomRoadPoint, resolveCircle } from './city.js';
 
 const SIDEWALK_OFFSET = ROADS.halfWidth + 13;
 
+// Pick a sidewalk to walk: a road, a side of it, and a starting point.
 function randomSidewalkLine(random) {
   const side = random.sign();
   if (random.chance(0.5)) {
@@ -21,22 +22,27 @@ function randomSidewalkLine(random) {
 }
 
 function basePed(random, x, y) {
+  const angle = random.range(0, Math.PI * 2);
+  const speed = random.range(PEDS.walkMin, PEDS.walkMax);
+  const shirt = random.pick(PED_SHIRTS);
+  const dir = random.sign();
+  const seed = random.range(0, 100);
   return {
     x,
     y,
-    angle: random.range(0, Math.PI * 2),
-    speed: random.range(PEDS.walkMin, PEDS.walkMax),
-    shirt: random.pick(PED_SHIRTS),
+    angle,
+    speed,
+    shirt,
     axis: 'h',
     road: 2300,
     side: 1,
-    dir: random.sign(),
+    dir,
     kind: 'walk',
     state: 'walk',
     fleeUntil: 0,
     downUntil: 0,
     idleUntil: 0,
-    seed: random.range(0, 100),
+    seed,
   };
 }
 
@@ -154,13 +160,25 @@ function walkStep(ped, dt) {
   const step = ped.speed * dt;
   if (ped.axis === 'v') {
     ped.y += ped.dir * step;
-    if (ped.y < 40) { ped.y = 40; ped.dir = 1; }
-    if (ped.y > 2340) { ped.y = 2340; ped.dir = -1; }
+    if (ped.y < 40) {
+      ped.y = 40;
+      ped.dir = 1;
+    }
+    if (ped.y > 2340) {
+      ped.y = 2340;
+      ped.dir = -1;
+    }
     ped.angle = ped.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
   } else {
     ped.x += ped.dir * step;
-    if (ped.x < 40) { ped.x = 40; ped.dir = 1; }
-    if (ped.x > 3360) { ped.x = 3360; ped.dir = -1; }
+    if (ped.x < 40) {
+      ped.x = 40;
+      ped.dir = 1;
+    }
+    if (ped.x > 3360) {
+      ped.x = 3360;
+      ped.dir = -1;
+    }
     ped.angle = ped.dir > 0 ? 0 : Math.PI;
   }
 }
@@ -168,7 +186,9 @@ function walkStep(ped, dt) {
 export function updatePedestrians(peds, dt, now, player) {
   const { city, random } = peds;
   let walkers = 0;
-  for (const p of peds.peds) if (p.kind === 'walk' || p.kind === 'jog') walkers += 1;
+  for (const p of peds.peds) {
+    if (p.kind === 'walk' || p.kind === 'jog') walkers += 1;
+  }
   while (walkers < PEDS.count) {
     peds.peds.push(makePed(city, random, player.x, player.y));
     walkers += 1;

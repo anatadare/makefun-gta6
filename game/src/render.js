@@ -72,7 +72,10 @@ export function createRenderer(canvas) {
     const z = camera.zoom;
     const centreX = view.x + (VIEW.width * view.scale) / 2;
     const centreY = view.y + (VIEW.height * view.scale) / 2;
-    return { x: (px - centreX) / (view.scale * z) + camera.x, y: (py - centreY) / (view.scale * z) + camera.y };
+    return {
+      x: (px - centreX) / (view.scale * z) + camera.x,
+      y: (py - centreY) / (view.scale * z) + camera.y,
+    };
   }
 
   function inView(x, y, margin) {
@@ -82,29 +85,30 @@ export function createRenderer(canvas) {
       && y > camera.y - halfH - margin && y < camera.y + halfH + margin;
   }
 
+  function disc(x, y, r) {
+    context.beginPath();
+    context.arc(x, y, r, 0, Math.PI * 2);
+    context.fill();
+  }
+
   function drawGround(state, time) {
     context.fillStyle = PALETTE.ground;
     context.fillRect(0, 0, WORLD.width, WORLD.height);
     for (const block of state.city.blocks) {
-      if (!inView(block.x + block.w / 2, block.y + block.h / 2, Math.max(block.w, block.h))) continue;
+      const margin = Math.max(block.w, block.h);
+      if (!inView(block.x + block.w / 2, block.y + block.h / 2, margin)) continue;
       if (block.kind === 'park') {
         context.fillStyle = PALETTE.grass;
         context.fillRect(block.x, block.y, block.w, block.h);
         context.fillStyle = PALETTE.water;
-        context.beginPath();
-        context.arc(block.pond.x, block.pond.y, block.pond.r, 0, Math.PI * 2);
-        context.fill();
+        disc(block.pond.x, block.pond.y, block.pond.r);
       } else if (block.kind === 'plaza') {
         context.fillStyle = '#e3dcc8';
         context.fillRect(block.x, block.y, block.w, block.h);
         context.fillStyle = PALETTE.water;
-        context.beginPath();
-        context.arc(block.fountain.x, block.fountain.y, block.fountain.r, 0, Math.PI * 2);
-        context.fill();
+        disc(block.fountain.x, block.fountain.y, block.fountain.r);
         context.fillStyle = '#c9bfa5';
-        context.beginPath();
-        context.arc(block.fountain.x, block.fountain.y, block.fountain.r * 0.45, 0, Math.PI * 2);
-        context.fill();
+        disc(block.fountain.x, block.fountain.y, block.fountain.r * 0.45);
       } else if (block.kind === 'docks') {
         context.fillStyle = '#b8a888';
         context.fillRect(block.x, block.y, block.w, block.h);
@@ -167,10 +171,11 @@ export function createRenderer(canvas) {
 
   function drawRoads(state) {
     const hw = ROADS.halfWidth;
+    const kerb = hw + ROADS.sidewalk;
     // Sidewalks first, then asphalt, so the kerb shows around every road.
     context.fillStyle = PALETTE.sidewalk;
-    for (const x of ROADS.vertical) context.fillRect(x - hw - ROADS.sidewalk, 0, (hw + ROADS.sidewalk) * 2, WORLD.height);
-    for (const y of ROADS.horizontal) context.fillRect(0, y - hw - ROADS.sidewalk, WORLD.width, (hw + ROADS.sidewalk) * 2);
+    for (const x of ROADS.vertical) context.fillRect(x - kerb, 0, kerb * 2, WORLD.height);
+    for (const y of ROADS.horizontal) context.fillRect(0, y - kerb, WORLD.width, kerb * 2);
     context.fillStyle = PALETTE.road;
     for (const x of ROADS.vertical) context.fillRect(x - hw, 0, hw * 2, WORLD.height);
     for (const y of ROADS.horizontal) context.fillRect(0, y - hw, WORLD.width, hw * 2);
@@ -206,8 +211,9 @@ export function createRenderer(canvas) {
     for (const b of state.city.buildings) {
       if (!inView(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) continue;
       // A soft shadow thrown to the south-east; taller blocks throw it further.
-      const shX = 6 + (b.height || 1) * 4;
-      const shY = 8 + (b.height || 1) * 5;
+      const height = b.height || 1;
+      const shX = 6 + height * 4;
+      const shY = 8 + height * 5;
       context.fillStyle = 'rgba(0,0,0,0.22)';
       context.fillRect(b.x + shX, b.y + shY, b.w, b.h);
       context.fillStyle = b.color;
@@ -308,9 +314,7 @@ export function createRenderer(canvas) {
       context.restore();
     }
     context.fillStyle = '#6fbf6a';
-    context.beginPath();
-    context.arc(topX, topY, 4 * s, 0, Math.PI * 2);
-    context.fill();
+    disc(topX, topY, 4 * s);
   }
 
   function drawUmbrella(u) {
@@ -333,9 +337,7 @@ export function createRenderer(canvas) {
     context.lineTo(u.x, u.y - 4);
     context.stroke();
     context.fillStyle = u.color;
-    context.beginPath();
-    context.arc(u.x, u.y - 4, 17, 0, Math.PI * 2);
-    context.fill();
+    disc(u.x, u.y - 4, 17);
     context.fillStyle = 'rgba(255,255,255,0.55)';
     for (let i = 0; i < 4; i += 1) {
       const a0 = u.angle + (i / 4) * Math.PI * 2;
@@ -346,9 +348,7 @@ export function createRenderer(canvas) {
       context.fill();
     }
     context.fillStyle = 'rgba(0,0,0,0.25)';
-    context.beginPath();
-    context.arc(u.x, u.y - 4, 3, 0, Math.PI * 2);
-    context.fill();
+    disc(u.x, u.y - 4, 3);
   }
 
   function drawStashes(state, time) {
@@ -357,9 +357,7 @@ export function createRenderer(canvas) {
       const pulse = 1 + Math.sin(time * 3 + s.x) * 0.15;
       // A soft green glow, then the cash bag.
       context.fillStyle = 'rgba(80,220,120,0.25)';
-      context.beginPath();
-      context.arc(s.x, s.y, 22 * pulse, 0, Math.PI * 2);
-      context.fill();
+      disc(s.x, s.y, 22 * pulse);
       context.fillStyle = '#2e9e4f';
       context.beginPath();
       context.roundRect(s.x - 11, s.y - 9, 22, 18, 5);
@@ -417,9 +415,7 @@ export function createRenderer(canvas) {
       const alpha = Math.max(0, p.life / p.maxLife);
       context.globalAlpha = alpha;
       context.fillStyle = p.color;
-      context.beginPath();
-      context.arc(p.x, p.y, p.size * (0.6 + 0.4 * alpha), 0, Math.PI * 2);
-      context.fill();
+      disc(p.x, p.y, p.size * (0.6 + 0.4 * alpha));
     }
     context.globalAlpha = 1;
     for (const ring of state.effects.rings) {
@@ -449,6 +445,56 @@ export function createRenderer(canvas) {
       context.arc(cloud.x, cloud.y, cloud.rx, 0, Math.PI * 2);
       context.fill();
       context.restore();
+    }
+  }
+
+  // The detailing that makes each car kind read at a glance: the van's
+  // long roof, the pickup's bed, the sports car's spoiler, the taxi's roof
+  // sign, the muscle car's twin stripes.
+  function drawKindDetail(car, half, wide, t) {
+    if (t.kind === 'van') {
+      context.fillStyle = 'rgba(0,0,0,0.18)';
+      context.fillRect(-half + 8, -wide + 6, t.length - 30, t.width - 12);
+      context.fillStyle = 'rgba(255,255,255,0.15)';
+      context.fillRect(-half + 12, -wide + 8, t.length - 38, 6);
+    } else if (t.kind === 'pickup') {
+      context.fillStyle = 'rgba(0,0,0,0.3)';
+      context.fillRect(-half + 4, -wide + 4, 16, t.width - 8);
+    } else if (t.kind === 'sports') {
+      context.fillStyle = 'rgba(0,0,0,0.35)';
+      context.fillRect(-half - 1, -wide + 2, 5, t.width - 4);
+    } else if (t.kind === 'taxi') {
+      context.fillStyle = '#fff8dc';
+      context.beginPath();
+      context.roundRect(-8, -6, 16, 12, 2);
+      context.fill();
+      context.fillStyle = '#222222';
+      context.font = 'bold 7px Arial, sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText('TAXI', 0, 0);
+    } else if (t.kind === 'muscle') {
+      context.fillStyle = 'rgba(0,0,0,0.45)';
+      context.fillRect(-half + 6, -7, t.length - 16, 5);
+      context.fillRect(-half + 6, 2, t.length - 16, 5);
+    }
+  }
+
+  // Smoke curling up from a wreck or a dying engine, driven by world time
+  // so it keeps moving even when the car does not.
+  function drawSmoke(car, time, wreck) {
+    const puffs = wreck ? 2 : 3;
+    for (let i = 0; i < puffs; i += 1) {
+      const pace = wreck ? 24 : 30;
+      const drift = ((time * pace + i * (wreck ? 30 : 22)) % 60) - 30;
+      const strength = wreck ? 0.3 - Math.abs(drift) / 120 : 0.35 - Math.abs(drift) / 100;
+      context.fillStyle = `rgba(${wreck ? '90,90,90' : '120,120,120'},${strength})`;
+      const sx = wreck ? car.x + drift * 0.2 : car.x + Math.cos(car.angle) * 14 + drift * 0.3;
+      const sy = wreck ? car.y - 8 - Math.abs(drift) * 0.5 : car.y - 10 - Math.abs(drift) * 0.6;
+      const sr = wreck ? 5 + Math.abs(drift) * 0.1 : 6 + Math.abs(drift) * 0.12;
+      context.beginPath();
+      context.arc(sx, sy, sr, 0, Math.PI * 2);
+      context.fill();
     }
   }
 
@@ -501,13 +547,7 @@ export function createRenderer(canvas) {
       context.fill();
       context.restore();
       // A wrecked car keeps smoking until the tow truck takes it.
-      for (let i = 0; i < 2; i += 1) {
-        const drift = ((time * 24 + i * 30) % 60) - 30;
-        context.fillStyle = `rgba(90,90,90,${0.3 - Math.abs(drift) / 120})`;
-        context.beginPath();
-        context.arc(car.x + drift * 0.2, car.y - 8 - Math.abs(drift) * 0.5, 5 + Math.abs(drift) * 0.1, 0, Math.PI * 2);
-        context.fill();
-      }
+      drawSmoke(car, time, true);
       return;
     }
     if (car.typeId === 'interceptor') {
@@ -526,35 +566,7 @@ export function createRenderer(canvas) {
     context.fillRect(-half + 12, -wide + 4, 8, t.width - 8);
     context.fillStyle = 'rgba(255,255,255,0.22)';
     context.fillRect(-half + 22, -wide + 5, t.length - 50, t.width - 10);
-    // Each kind reads at a glance: the van's long roof, the pickup's bed,
-    // the sports car's spoiler, the taxi's roof sign, the muscle car's
-    // twin stripes.
-    if (t.kind === 'van') {
-      context.fillStyle = 'rgba(0,0,0,0.18)';
-      context.fillRect(-half + 8, -wide + 6, t.length - 30, t.width - 12);
-      context.fillStyle = 'rgba(255,255,255,0.15)';
-      context.fillRect(-half + 12, -wide + 8, t.length - 38, 6);
-    } else if (t.kind === 'pickup') {
-      context.fillStyle = 'rgba(0,0,0,0.3)';
-      context.fillRect(-half + 4, -wide + 4, 16, t.width - 8);
-    } else if (t.kind === 'sports') {
-      context.fillStyle = 'rgba(0,0,0,0.35)';
-      context.fillRect(-half - 1, -wide + 2, 5, t.width - 4);
-    } else if (t.kind === 'taxi') {
-      context.fillStyle = '#fff8dc';
-      context.beginPath();
-      context.roundRect(-8, -6, 16, 12, 2);
-      context.fill();
-      context.fillStyle = '#222222';
-      context.font = 'bold 7px Arial, sans-serif';
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.fillText('TAXI', 0, 0);
-    } else if (t.kind === 'muscle') {
-      context.fillStyle = 'rgba(0,0,0,0.45)';
-      context.fillRect(-half + 6, -7, t.length - 16, 5);
-      context.fillRect(-half + 6, 2, t.length - 16, 5);
-    }
+    drawKindDetail(car, half, wide, t);
     // Headlights and brake lights.
     context.fillStyle = '#fff6b0';
     context.beginPath();
@@ -578,15 +590,7 @@ export function createRenderer(canvas) {
     }
     context.restore();
     // Smoke from a dying engine.
-    if (car.health < 30 && !car.dead) {
-      for (let i = 0; i < 3; i += 1) {
-        const drift = ((time * 30 + i * 22) % 60) - 30;
-        context.fillStyle = `rgba(120,120,120,${0.35 - Math.abs(drift) / 100})`;
-        context.beginPath();
-        context.arc(car.x + Math.cos(car.angle) * 14 + drift * 0.3, car.y - 10 - Math.abs(drift) * 0.6, 6 + Math.abs(drift) * 0.12, 0, Math.PI * 2);
-        context.fill();
-      }
-    }
+    if (car.health < 30 && !car.dead) drawSmoke(car, time, false);
   }
 
   function drawPerson(x, y, angle, shirt, down, gunAngle, highlight, hat) {
@@ -601,9 +605,7 @@ export function createRenderer(canvas) {
       context.ellipse(x, y, 13, 7, angle, 0, Math.PI * 2);
       context.fill();
       context.fillStyle = SKIN;
-      context.beginPath();
-      context.arc(x + Math.cos(angle) * 12, y + Math.sin(angle) * 12, 5, 0, Math.PI * 2);
-      context.fill();
+      disc(x + Math.cos(angle) * 12, y + Math.sin(angle) * 12, 5);
       return;
     }
     context.fillStyle = 'rgba(0,0,0,0.25)';
@@ -619,23 +621,15 @@ export function createRenderer(canvas) {
     }
     // Legs, body, head — a person seen from above.
     context.fillStyle = '#2c2c34';
-    context.beginPath();
-    context.arc(x - Math.cos(angle) * 3, y - Math.sin(angle) * 3, 8, 0, Math.PI * 2);
-    context.fill();
+    disc(x - Math.cos(angle) * 3, y - Math.sin(angle) * 3, 8);
     context.fillStyle = shirt;
-    context.beginPath();
-    context.arc(x, y, 9.5, 0, Math.PI * 2);
-    context.fill();
+    disc(x, y, 9.5);
     context.fillStyle = SKIN;
-    context.beginPath();
-    context.arc(x + Math.cos(angle) * 2, y + Math.sin(angle) * 2, 5.5, 0, Math.PI * 2);
-    context.fill();
+    disc(x + Math.cos(angle) * 2, y + Math.sin(angle) * 2, 5.5);
     if (hat) {
       // A white cap, so a cop reads at a glance on dark asphalt.
       context.fillStyle = '#f2f2f2';
-      context.beginPath();
-      context.arc(x - Math.cos(angle) * 1.5, y - Math.sin(angle) * 1.5, 4.5, 0, Math.PI * 2);
-      context.fill();
+      disc(x - Math.cos(angle) * 1.5, y - Math.sin(angle) * 1.5, 4.5);
     }
     if (gunAngle !== null && gunAngle !== undefined) {
       context.strokeStyle = '#222222';
@@ -706,9 +700,7 @@ export function createRenderer(canvas) {
         context.lineTo(0, 9);
         context.closePath();
         context.fill();
-        context.beginPath();
-        context.arc(0, 0, 10, 0, Math.PI * 2);
-        context.fill();
+        disc(0, 0, 10);
       } else {
         context.beginPath();
         context.moveTo(0, -5);
@@ -745,12 +737,22 @@ export function createRenderer(canvas) {
     for (const car of state.police.copCars) queueCar(car);
     if (state.missionCar) queueCar(state.missionCar);
     for (const ped of state.peds.peds) {
-      if (ped.state === 'sun') actors.push({ y: ped.y, draw: () => drawSunbather(ped) });
-      else if (ped.kind === 'vendor' && ped.state === 'idle') actors.push({ y: ped.y, draw: () => drawVendor(ped) });
-      else actors.push({ y: ped.y, draw: () => drawPerson(ped.x, ped.y, ped.angle, ped.shirt, ped.state === 'down', null, false, ped.kind === 'jog') });
+      if (ped.state === 'sun') {
+        actors.push({ y: ped.y, draw: () => drawSunbather(ped) });
+      } else if (ped.kind === 'vendor' && ped.state === 'idle') {
+        actors.push({ y: ped.y, draw: () => drawVendor(ped) });
+      } else {
+        actors.push({
+          y: ped.y,
+          draw: () => drawPerson(ped.x, ped.y, ped.angle, ped.shirt, ped.state === 'down', null, false, ped.kind === 'jog'),
+        });
+      }
     }
     for (const cop of state.police.footCops) {
-      actors.push({ y: cop.y, draw: () => drawPerson(cop.x, cop.y, cop.angle, PALETTE.cop, cop.dead, cop.angle, false, true) });
+      actors.push({
+        y: cop.y,
+        draw: () => drawPerson(cop.x, cop.y, cop.angle, PALETTE.cop, cop.dead, cop.angle, false, true),
+      });
     }
     const player = state.player;
     if (player.onFoot) {

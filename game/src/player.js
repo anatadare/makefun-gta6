@@ -1,8 +1,9 @@
-// The player: Mars Delgado, getaway driver. On foot he runs, aims with the
-// mouse and shoots or punches; in a car he is the car. Health, money, the
-// car he is driving and the weapon in his hands all live here. The aim
-// turns smoothly toward the mouse instead of snapping, so the gun feels
-// held rather than glued. Q swaps between the pistol and the scattergun.
+// The player: Mars Delgado, getaway driver. On foot he runs, aims with
+// the mouse and shoots or punches; in a car he is the car. Health, money,
+// the car he is driving and the weapon in his hands all live here. The
+// aim turns smoothly toward the mouse instead of snapping, so the gun
+// feels held rather than glued. Q swaps between the pistol and the
+// scattergun.
 
 import { PLAYER } from './config.js';
 import { resolveCircle } from './city.js';

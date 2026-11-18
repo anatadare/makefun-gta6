@@ -1,37 +1,45 @@
-// The game's dice: one seeded stream (mulberry32) that every system draws
-// from in turn. Same seed, same city, same traffic, same screenshot scenes,
-// so a staged shot is repeatable frame for frame. Nothing here touches
-// Math.random; the only unseeded randomness in the game is cosmetic dust.
+// The game's dice: one seeded stream every system draws from in turn.
+// Same seed, same city, same traffic, same staged screenshot scenes, so
+// a shot is repeatable frame for frame. The stream is mulberry32, a small
+// fast generator with a long period; nothing here touches Math.random.
+// The only unseeded randomness in the game is cosmetic dust and smoke.
+
+const SEED_STEP = 0x6d2b79f5;
 
 export function createRandom(seed) {
-  let state = (seed >>> 0) || 0x6d2b79f5;
+  // A zero seed would lock the stream, so it falls back to the step itself.
+  let cursor = (seed >>> 0) || SEED_STEP;
 
+  // The next float in [0, 1): advance the state, scramble it, scale it.
   function next() {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    cursor = (cursor + SEED_STEP) >>> 0;
+    let mix = cursor;
+    mix = Math.imul(mix ^ (mix >>> 15), mix | 1);
+    mix ^= mix + Math.imul(mix ^ (mix >>> 7), mix | 61);
+    return ((mix ^ (mix >>> 14)) >>> 0) / 4294967296;
   }
 
-  // A float in [min, max), an integer in [min, max], a random member of a
-  // list, a coin flip at probability p, a random sign.
+  // A float in [min, max).
   function range(min, max) {
-    return min + next() * (max - min);
+    return min + (max - min) * next();
   }
 
+  // An integer in [min, max], both ends included.
   function int(min, max) {
-    return min + Math.floor(next() * (max - min + 1));
+    return min + Math.floor(next() * (max + 1 - min));
   }
 
+  // A random member of a list.
   function pick(list) {
     return list[Math.floor(next() * list.length)];
   }
 
+  // True with probability p.
   function chance(p) {
     return next() < p;
   }
 
+  // Either -1 or 1, evenly.
   function sign() {
     return next() < 0.5 ? -1 : 1;
   }

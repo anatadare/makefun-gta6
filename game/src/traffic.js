@@ -53,7 +53,7 @@ function parkOne(traffic, city, random) {
   let y;
   let angle;
   if (vertical) {
-    // Parked at the curb (52 px off centre), clear of the driving lane.
+    // Parked at the curb (52 units off centre), clear of the driving lane.
     x = random.pick(PARKED_V) + random.sign() * 52;
     y = random.range(120, 2240);
     angle = random.chance(0.5) ? Math.PI / 2 : -Math.PI / 2;
@@ -93,7 +93,7 @@ function blockedAhead(car, others) {
     const dy = other.y - car.y;
     const ahead = dx * fx + dy * fy;
     if (ahead < 0 || ahead > 110) continue;
-    if (Math.abs(-dx * fy + dy * fx) < carRadius(other) + 14) return true;
+    if (Math.abs(dy * fx - dx * fy) < carRadius(other) + 14) return true;
   }
   return false;
 }
@@ -186,7 +186,10 @@ export function nearestStealable(traffic, x, y, maxDist) {
   let bestD = maxDist;
   const consider = (car) => {
     const d = Math.hypot(car.x - x, car.y - y);
-    if (d < bestD) { bestD = d; best = car; }
+    if (d < bestD) {
+      bestD = d;
+      best = car;
+    }
   };
   for (const car of traffic.parked) {
     if (car.burnt) continue; // A burnt wreck is no ride at all.

@@ -6,12 +6,12 @@
 
 An open-world crime game in a sun-soaked coastal city, built by an AI agent for make.fun's "Make GTA 6" bounty, $1,666 in USDC.
 
-You play Mars Delgado, a getaway driver back in Solmara. Take jobs from Lena the fixer and Otis the garage owner across eight story missions, then keep earning with repeatable fares, some of them rush jobs against the clock. Explore the city on foot and by car, steal any car you see, outrun the Solmara PD as your wanted level climbs, and stay out of jail, day and night.
+You are Mars Delgado, a getaway driver back in Solmara. Lena the fixer and Otis the garage owner have eight story jobs for you, and once the story is done the fares keep coming, some of them rush jobs against the clock. Walk the streets or drive them, steal any car you see, outrun the Solmara PD as your wanted level climbs, and stay out of jail, day and night.
 
 What is in the game:
 
-- A city to explore: streets, blocks, a park, a plaza, a market, the docks, a stadium with a running track and stands, and a beach with umbrellas, sunbathers and open water
-- A day/night cycle: the day turns over 8 real minutes, dusk warms the light, and at night the city darkens and every car's headlights cut cones ahead; the HUD clock keeps the time
+- A city to explore: streets and blocks, a park, a plaza, a market, the docks, a stadium with a running track and stands, and a beach with umbrellas, sunbathers and open water
+- A day/night cycle: the day turns over 8 real minutes, dusk warms the light, and at night the city darkens and every car's headlights cut cones ahead; the HUD clock keeps the time, and N skips two hours
 - Traffic that drives the streets and pulls over for sirens; pedestrians who walk the sidewalks, pause to look around, and run when shots ring out, plus market vendors minding their stalls and joggers on the beachfront path
 - Cars to steal and drive: sedans, coupes, vans, pickups, a sports car, yellow taxis everywhere, and the rare Cometa muscle car with huge pull and a loose tail; off-road ground slows you down
 - A wanted level (1-5 stars) with police cars that chase, cut you off and swing for your rear quarter, and foot cops who arrest or shoot, with steadier veteran aim from four stars; lose them at the Palm Heights hideout or pay Otis to clean your ride

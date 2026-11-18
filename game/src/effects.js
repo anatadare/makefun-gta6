@@ -44,19 +44,31 @@ export function spawnExplosion(effects, x, y) {
 // Dust kicked up by a car leaving the asphalt.
 export function spawnDust(effects, x, y) {
   if (effects.particles.length >= MAX_PARTICLES) return;
-  addParticle(effects, x, y, (Math.random() - 0.5) * 40, -20 - Math.random() * 30, 0.5 + Math.random() * 0.4, 5 + Math.random() * 6, '#c9b896');
+  addParticle(
+    effects, x, y,
+    (Math.random() - 0.5) * 40, -20 - Math.random() * 30,
+    0.5 + Math.random() * 0.4, 5 + Math.random() * 6, '#c9b896',
+  );
 }
 
 // White tire smoke from a hard drift.
 export function spawnTireSmoke(effects, x, y) {
   if (effects.particles.length >= MAX_PARTICLES) return;
-  addParticle(effects, x, y, (Math.random() - 0.5) * 24, -14 - Math.random() * 22, 0.5 + Math.random() * 0.4, 6 + Math.random() * 6, '#e8e8e8');
+  addParticle(
+    effects, x, y,
+    (Math.random() - 0.5) * 24, -14 - Math.random() * 22,
+    0.5 + Math.random() * 0.4, 6 + Math.random() * 6, '#e8e8e8',
+  );
 }
 
 // A puff of smoke from a battered engine.
 export function spawnEngineSmoke(effects, x, y) {
   if (effects.particles.length >= MAX_PARTICLES) return;
-  addParticle(effects, x, y, (Math.random() - 0.5) * 20, -30 - Math.random() * 20, 0.7 + Math.random() * 0.5, 6 + Math.random() * 5, '#777777');
+  addParticle(
+    effects, x, y,
+    (Math.random() - 0.5) * 20, -30 - Math.random() * 20,
+    0.7 + Math.random() * 0.5, 6 + Math.random() * 5, '#777777',
+  );
 }
 
 // Grey smoke curling from a scattergun's muzzle after the blast.
@@ -65,7 +77,12 @@ export function spawnMuzzleSmoke(effects, x, y, angle) {
   const mx = x + Math.cos(angle) * 24;
   const my = y + Math.sin(angle) * 24;
   for (let i = 0; i < 3; i += 1) {
-    addParticle(effects, mx, my, Math.cos(angle) * 30 + (Math.random() - 0.5) * 20, Math.sin(angle) * 30 - 20 - Math.random() * 20, 0.4 + Math.random() * 0.3, 4 + Math.random() * 4, '#b9b9b9');
+    addParticle(
+      effects, mx, my,
+      Math.cos(angle) * 30 + (Math.random() - 0.5) * 20,
+      Math.sin(angle) * 30 - 20 - Math.random() * 20,
+      0.4 + Math.random() * 0.3, 4 + Math.random() * 4, '#b9b9b9',
+    );
   }
 }
 
