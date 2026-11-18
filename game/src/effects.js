@@ -1,124 +1,160 @@
-// Effects: the juice. Particles (explosion fire, dust, smoke, tire smoke,
-// muzzle smoke), skid marks left by hard braking and drifting, expanding
-// shockwave rings from a wreck, and the screen shake that sells an impact.
-// The world spawns them, the renderer draws them, nothing here knows about
-// the canvas.
+// effects.js — particles, skid marks, muzzle flashes and screen shake.
+// Purely visual: nothing here changes gameplay state, so the render pass
+// can run it without worrying about the simulation.
 
-const MAX_PARTICLES = 400;
-const MAX_SKIDS = 220;
+import { clamp } from './random.js';
 
 export function createEffects() {
-  return { particles: [], skids: [], rings: [], shake: 0 };
-}
+  const particles = [];
+  const skids = [];
+  const flashes = [];
+  let shake = 0;
+  let flashOverlay = null;
 
-function addParticle(effects, x, y, vx, vy, life, size, color) {
-  if (effects.particles.length >= MAX_PARTICLES) effects.particles.shift();
-  effects.particles.push({ x, y, vx, vy, life, maxLife: life, size, color });
-}
-
-function burst(effects, x, y, count, speedMin, speedMax, lifeMin, lifeMax, sizeMin, sizeMax, colors, lift) {
-  for (let i = 0; i < count; i += 1) {
-    const a = Math.random() * Math.PI * 2;
-    const speed = speedMin + Math.random() * (speedMax - speedMin);
-    addParticle(
-      effects,
-      x,
-      y,
-      Math.cos(a) * speed,
-      Math.sin(a) * speed + (lift || 0),
-      lifeMin + Math.random() * (lifeMax - lifeMin),
-      sizeMin + Math.random() * (sizeMax - sizeMin),
-      colors[i % colors.length],
-    );
+  function spawn(x, y, opts) {
+    particles.push({
+      x, y,
+      vx: opts.vx || 0,
+      vy: opts.vy || 0,
+      life: opts.life || 0.5,
+      maxLife: opts.life || 0.5,
+      size: opts.size || 3,
+      color: opts.color || '#ffffff',
+      drag: opts.drag || 2,
+      gravity: opts.gravity || 0,
+    });
+    if (particles.length > 400) particles.splice(0, particles.length - 400);
   }
-}
 
-// A car wreck: fire, smoke, flying debris, a shockwave ring and a hard shake.
-export function spawnExplosion(effects, x, y) {
-  burst(effects, x, y, 26, 60, 320, 0.4, 0.9, 4, 11, ['#ff9a3d', '#ffc93d', '#ff5a3d', '#ffdd55'], 0);
-  burst(effects, x, y, 14, 20, 90, 0.9, 1.8, 8, 18, ['#5a5a5a'], -30);
-  effects.rings.push({ x, y, radius: 10, maxRadius: 90, life: 0.45, maxLife: 0.45 });
-  effects.shake = Math.min(16, effects.shake + 12);
-}
-
-// Dust kicked up by a car leaving the asphalt.
-export function spawnDust(effects, x, y) {
-  if (effects.particles.length >= MAX_PARTICLES) return;
-  addParticle(
-    effects, x, y,
-    (Math.random() - 0.5) * 40, -20 - Math.random() * 30,
-    0.5 + Math.random() * 0.4, 5 + Math.random() * 6, '#c9b896',
-  );
-}
-
-// White tire smoke from a hard drift.
-export function spawnTireSmoke(effects, x, y) {
-  if (effects.particles.length >= MAX_PARTICLES) return;
-  addParticle(
-    effects, x, y,
-    (Math.random() - 0.5) * 24, -14 - Math.random() * 22,
-    0.5 + Math.random() * 0.4, 6 + Math.random() * 6, '#e8e8e8',
-  );
-}
-
-// A puff of smoke from a battered engine.
-export function spawnEngineSmoke(effects, x, y) {
-  if (effects.particles.length >= MAX_PARTICLES) return;
-  addParticle(
-    effects, x, y,
-    (Math.random() - 0.5) * 20, -30 - Math.random() * 20,
-    0.7 + Math.random() * 0.5, 6 + Math.random() * 5, '#777777',
-  );
-}
-
-// Grey smoke curling from a scattergun's muzzle after the blast.
-export function spawnMuzzleSmoke(effects, x, y, angle) {
-  if (effects.particles.length >= MAX_PARTICLES) return;
-  const mx = x + Math.cos(angle) * 24;
-  const my = y + Math.sin(angle) * 24;
-  for (let i = 0; i < 3; i += 1) {
-    addParticle(
-      effects, mx, my,
-      Math.cos(angle) * 30 + (Math.random() - 0.5) * 20,
-      Math.sin(angle) * 30 - 20 - Math.random() * 20,
-      0.4 + Math.random() * 0.3, 4 + Math.random() * 4, '#b9b9b9',
-    );
-  }
-}
-
-// A skid mark: a short dark streak along the car's heading.
-export function addSkid(effects, x, y, angle) {
-  if (effects.skids.length >= MAX_SKIDS) effects.skids.shift();
-  effects.skids.push({ x, y, angle, life: 4 });
-}
-
-export function addShake(effects, amount) {
-  effects.shake = Math.min(16, effects.shake + amount);
-}
-
-// Age a list in place, dropping the dead by swapping with the tail.
-function ageOut(list, dt) {
-  for (let i = list.length - 1; i >= 0; i -= 1) {
-    list[i].life -= dt;
-    if (list[i].life <= 0) {
-      list[i] = list[list.length - 1];
-      list.pop();
-    }
-  }
-}
-
-export function updateEffects(effects, dt) {
-  for (const p of effects.particles) {
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    p.vx -= p.vx * 1.8 * dt;
-    p.vy -= p.vy * 1.8 * dt;
-  }
-  ageOut(effects.particles, dt);
-  ageOut(effects.skids, dt);
-  for (const ring of effects.rings) {
-    ring.radius += (ring.maxRadius - ring.radius) * Math.min(1, 10 * dt);
-  }
-  ageOut(effects.rings, dt);
-  effects.shake = Math.max(0, effects.shake - 26 * dt);
+  return {
+    get shake() {
+      return shake;
+    },
+    addShake(amount) {
+      shake = clamp(shake + amount, 0, 14);
+    },
+    setFlash(color, alpha, seconds) {
+      flashOverlay = { color, alpha, seconds, t: 0 };
+    },
+    burst(x, y, color, count, speed) {
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const s = speed * (0.3 + Math.random() * 0.7);
+        spawn(x, y, {
+          vx: Math.cos(a) * s,
+          vy: Math.sin(a) * s,
+          life: 0.3 + Math.random() * 0.4,
+          size: 2 + Math.random() * 3,
+          color,
+        });
+      }
+    },
+    exhaust(x, y, angle) {
+      spawn(x - Math.cos(angle) * 20, y - Math.sin(angle) * 20, {
+        vx: -Math.cos(angle) * 30 + (Math.random() - 0.5) * 20,
+        vy: -Math.sin(angle) * 30 + (Math.random() - 0.5) * 20,
+        life: 0.4,
+        size: 3 + Math.random() * 3,
+        color: 'rgba(160,160,160,0.5)',
+      });
+    },
+    dust(x, y) {
+      spawn(x, y, {
+        vx: (Math.random() - 0.5) * 30,
+        vy: (Math.random() - 0.5) * 30,
+        life: 0.5,
+        size: 4 + Math.random() * 4,
+        color: 'rgba(200,190,160,0.45)',
+      });
+    },
+    blood(x, y) {
+      this.burst(x, y, '#a93226', 8, 120);
+    },
+    sparks(x, y) {
+      this.burst(x, y, '#f5d76e', 10, 200);
+    },
+    muzzle(x, y, angle) {
+      flashes.push({ x, y, angle, life: 0.07, maxLife: 0.07 });
+    },
+    skid(x, y, angle) {
+      skids.push({ x, y, angle, life: 6 });
+      if (skids.length > 220) skids.splice(0, skids.length - 220);
+    },
+    cashPop(x, y) {
+      this.burst(x, y, '#2ecc71', 12, 140);
+    },
+    update(dt) {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life -= dt;
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+        const drag = Math.max(0, 1 - p.drag * dt);
+        p.vx *= drag;
+        p.vy *= drag;
+        p.vy += p.gravity * dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+      }
+      for (let i = skids.length - 1; i >= 0; i--) {
+        skids[i].life -= dt;
+        if (skids[i].life <= 0) skids.splice(i, 1);
+      }
+      for (let i = flashes.length - 1; i >= 0; i--) {
+        flashes[i].life -= dt;
+        if (flashes[i].life <= 0) flashes.splice(i, 1);
+      }
+      if (flashOverlay) {
+        flashOverlay.t += dt;
+        if (flashOverlay.t >= flashOverlay.seconds) flashOverlay = null;
+      }
+      shake = Math.max(0, shake - dt * 26);
+    },
+    drawGround(ctx) {
+      for (const s of skids) {
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(s.angle);
+        ctx.globalAlpha = Math.min(0.5, s.life / 6);
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(-7, -2.5, 14, 5);
+        ctx.restore();
+      }
+    },
+    drawAir(ctx) {
+      for (const p of particles) {
+        ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      for (const f of flashes) {
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        ctx.rotate(f.angle);
+        ctx.globalAlpha = f.life / f.maxLife;
+        ctx.fillStyle = '#ffe27a';
+        ctx.beginPath();
+        ctx.moveTo(0, -5);
+        ctx.lineTo(16, 0);
+        ctx.lineTo(0, 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+    },
+    drawOverlay(ctx, width, height) {
+      if (!flashOverlay) return;
+      const fade = 1 - flashOverlay.t / flashOverlay.seconds;
+      ctx.globalAlpha = flashOverlay.alpha * fade;
+      ctx.fillStyle = flashOverlay.color;
+      ctx.fillRect(0, 0, width, height);
+      ctx.globalAlpha = 1;
+    },
+  };
 }

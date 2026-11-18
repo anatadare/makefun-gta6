@@ -1,139 +1,241 @@
-// Cars and how they move. A car keeps a velocity vector; each step splits
-// it into the part along the heading and the sideways slide. Throttle and
-// drag work on the forward part, grip kills the slide, so a car slides a
-// little through a turn and a lot with the handbrake on. Off the asphalt
-// the ground drags: sand and grass are slow going, which is why the roads
-// matter. The muscle car's loose grip makes it drift where a sedan grips.
+// vehicles.js — car definitions, arcade driving physics, collisions and
+// drawing. Every car in the city, parked, traffic, police or the player's,
+// is one of these; the driver (player, traffic AI, police AI) only feeds
+// it throttle and steering.
 
-import { CAR_TYPES } from './config.js';
-import { pointOnRoad, resolveCircle } from './city.js';
+import { VEHICLE_TYPES } from './config.js';
+import { clamp, angleDelta } from './random.js';
+import { collideCircle } from './world.js';
 
-const OFFROAD_DRAG = 1.4;
+let nextId = 1;
 
-export function createCar(typeId, x, y, angle, color, driver) {
+export function createVehicle(type, x, y, angle, opts = {}) {
+  const def = VEHICLE_TYPES[type];
   return {
-    typeId,
-    type: CAR_TYPES[typeId],
-    x,
-    y,
+    id: nextId++,
+    type,
+    label: def.label,
+    x, y,
     angle,
-    vx: 0,
-    vy: 0,
-    color,
-    driver, // 'player' | 'traffic' | 'cop' | 'parked' | 'none'
+    speed: 0,
+    color: opts.color || def.colors[Math.floor(Math.random() * def.colors.length)],
     health: 100,
-    siren: 0,
-    brake: false,
+    driver: opts.driver || 'parked', // parked | player | traffic | police | mission
+    occupants: opts.occupants || 0,
+    siren: type === 'cruiser' || type === 'veteran',
+    sirenPhase: Math.random() * 10,
+    headlights: false,
+    brakeLights: false,
+    smoke: 0,
     dead: false,
+    route: opts.route || null,
+    routeIndex: 0,
+    stuckTimer: 0,
+    fare: null,
   };
 }
 
-export function carSpeed(car) {
-  return Math.hypot(car.vx, car.vy);
+export function vehicleDef(car) {
+  return VEHICLE_TYPES[car.type];
 }
 
-export function carRadius(car) {
-  return car.type.length * 0.42;
-}
-
-// Split a car's velocity into forward speed and sideways slide, relative
-// to its heading; the inverse puts them back together after the step.
-function splitVelocity(car) {
-  const fx = Math.cos(car.angle);
-  const fy = Math.sin(car.angle);
-  return {
-    forward: car.vx * fx + car.vy * fy,
-    lateral: car.vy * fx - car.vx * fy,
-  };
-}
-
-function joinVelocity(car, forward, lateral) {
-  const fx = Math.cos(car.angle);
-  const fy = Math.sin(car.angle);
-  car.vx = fx * forward - fy * lateral;
-  car.vy = fy * forward + fx * lateral;
-}
-
-// Bounce a car off whatever resolveCircle pushed it out of. Returns the
-// impact speed, 0 when the car was moving away from the wall already.
-function bounceOff(car, push) {
-  if (!push) return 0;
-  const into = car.vx * push.nx + car.vy * push.ny;
-  if (into >= 0) return 0;
-  car.vx -= push.nx * into * 1.4;
-  car.vy -= push.ny * into * 1.4;
-  return -into;
-}
-
-// Drive one step. throttle -1..1, steer -1..1, handbrake true/false.
-// Returns the impact speed when the car hit something solid this step.
-export function driveCar(car, dt, throttle, steer, handbrake, city) {
-  const spec = car.type;
-  let { forward, lateral } = splitVelocity(car);
-
-  if (throttle > 0) {
-    forward += spec.accel * throttle * dt;
-  } else if (throttle < 0) {
-    // Braking while rolling forward; reversing once nearly stopped.
-    const braking = forward > 5 ? 1.6 : 0.55;
-    forward += spec.accel * braking * throttle * dt;
+// Arcade car physics: throttle along the heading, steering that bites
+// harder at speed, grip that pulls velocity toward the heading.
+export function driveVehicle(city, car, throttle, steer, dt, fx) {
+  const def = vehicleDef(car);
+  const forward = throttle > 0 ? 1 : throttle < 0 ? -1 : 0;
+  if (throttle !== 0) {
+    const accel = forward > 0 ? def.accel : def.accel * 0.7;
+    car.speed += forward * accel * dt;
+  } else {
+    car.speed *= Math.max(0, 1 - 0.6 * dt);
+    if (Math.abs(car.speed) < 4) car.speed = 0;
   }
-  const drag = (handbrake ? 1.1 : 0.35) + (pointOnRoad(city, car.x, car.y) ? 0 : OFFROAD_DRAG);
-  forward -= forward * drag * dt;
-  forward = Math.max(-spec.reverse, Math.min(spec.topSpeed, forward));
+  const maxFwd = def.topSpeed;
+  const maxRev = def.reverseSpeed;
+  car.speed = clamp(car.speed, -maxRev, maxFwd);
 
-  // Steering bites with speed and flips when reversing; a slow car can
-  // still creep around a corner, so the bite never quite reaches zero.
-  const bite = Math.max(0.35, Math.min(1, Math.abs(forward) / 110));
-  car.angle += steer * spec.turn * bite * Math.sign(forward || 1) * dt;
+  const speedFactor = clamp(Math.abs(car.speed) / 220, 0, 1);
+  const dir = car.speed >= 0 ? 1 : -1;
+  car.angle += steer * def.turnRate * speedFactor * dir * dt;
 
-  const grip = handbrake ? 2.2 : spec.grip;
-  lateral *= Math.max(0, 1 - grip * dt);
-  joinVelocity(car, forward, lateral);
-  car.x += car.vx * dt;
-  car.y += car.vy * dt;
-  car.brake = throttle < 0 && forward > 5;
-
-  const impact = bounceOff(car, resolveCircle(city, car, carRadius(car)));
-  if (impact > 0) {
-    // Cars are tough: a hard shunt costs a few points, not the car.
-    car.health -= impact * 0.006;
+  const vx = Math.cos(car.angle) * car.speed;
+  const vy = Math.sin(car.angle) * car.speed;
+  const nx = car.x + vx * dt;
+  const ny = car.y + vy * dt;
+  const r = def.length * 0.42;
+  const resolved = collideCircle(city, nx, ny, r);
+  const hitWall = Math.abs(resolved.x - nx) > 0.5 || Math.abs(resolved.y - ny) > 0.5;
+  if (hitWall) {
+    const impact = Math.abs(car.speed);
+    car.speed *= 0.45;
+    if (impact > 260) {
+      damageVehicle(car, impact / 60);
+      if (fx) {
+        fx.sparks(resolved.x, resolved.y);
+        fx.addShake(Math.min(6, impact / 120));
+      }
+      return { crashed: true, impact };
+    }
   }
-  return impact;
+  car.x = resolved.x;
+  car.y = resolved.y;
+
+  // Skid marks and smoke when sliding hard or damaged.
+  if (fx && Math.abs(steer) > 0.7 && Math.abs(car.speed) > 300) {
+    fx.skid(car.x - Math.cos(car.angle) * 16, car.y - Math.sin(car.angle) * 16, car.angle);
+  }
+  if (car.health < 40 && fx && Math.random() < dt * 8) {
+    fx.exhaust(car.x + Math.cos(car.angle) * 18, car.y + Math.sin(car.angle) * 18, car.angle);
+  }
+  return { crashed: false, impact: 0 };
 }
 
-// A car nobody drives rolls to a stop.
-export function coastCar(car, dt, city) {
-  car.vx -= car.vx * 2.2 * dt;
-  car.vy -= car.vy * 2.2 * dt;
-  car.x += car.vx * dt;
-  car.y += car.vy * dt;
-  bounceOff(car, resolveCircle(city, car, carRadius(car)));
+export function damageVehicle(car, amount) {
+  if (car.dead) return;
+  car.health -= amount;
+  if (car.health <= 0) {
+    car.health = 0;
+    car.dead = true;
+    car.speed = 0;
+  }
 }
 
-// Push two overlapping cars apart and trade some of their speed. Returns
-// the impact speed, 0 when they were already parting.
-export function collideCarPair(a, b) {
+// Simple circle push between two cars; returns true when they touched.
+export function separateCars(a, b) {
+  const da = vehicleDef(a);
+  const db = vehicleDef(b);
+  const ra = da.length * 0.42;
+  const rb = db.length * 0.42;
   const dx = b.x - a.x;
   const dy = b.y - a.y;
-  const dist = Math.hypot(dx, dy);
-  const min = carRadius(a) + carRadius(b) - 6;
-  if (dist === 0 || dist >= min) return 0;
-  const nx = dx / dist;
-  const ny = dy / dist;
-  const overlap = (min - dist) / 2;
-  a.x -= nx * overlap;
-  a.y -= ny * overlap;
-  b.x += nx * overlap;
-  b.y += ny * overlap;
-  const closing = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
-  if (closing >= 0) return 0;
-  const push = -closing * 0.7;
-  a.vx -= nx * push;
-  a.vy -= ny * push;
-  b.vx += nx * push;
-  b.vy += ny * push;
-  a.health -= push * 0.005;
-  b.health -= push * 0.005;
-  return push;
+  const d2 = dx * dx + dy * dy;
+  const min = ra + rb;
+  if (d2 >= min * min || d2 === 0) return false;
+  const d = Math.sqrt(d2);
+  const push = (min - d) / 2;
+  const ux = dx / d;
+  const uy = dy / d;
+  a.x -= ux * push;
+  a.y -= uy * push;
+  b.x += ux * push;
+  b.y += uy * push;
+  const rel = Math.abs(a.speed - b.speed);
+  a.speed *= 0.8;
+  b.speed *= 0.8;
+  if (rel > 200) {
+    damageVehicle(a, rel / 90);
+    damageVehicle(b, rel / 90);
+  }
+  return true;
+}
+
+export function drawVehicle(ctx, car, night) {
+  const def = vehicleDef(car);
+  const L = def.length;
+  const W = def.width;
+  ctx.save();
+  ctx.translate(car.x, car.y);
+  ctx.rotate(car.angle);
+
+  // Shadow.
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(-L / 2 + 2, -W / 2 + 3, L, W);
+
+  // Headlight cones at night.
+  if (night && car.headlights && !car.dead) {
+    const grad = ctx.createRadialGradient(L / 2, 0, 4, L / 2 + 90, 0, 110);
+    grad.addColorStop(0, 'rgba(255, 240, 170, 0.35)');
+    grad.addColorStop(1, 'rgba(255, 240, 170, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(L / 2, -W / 2 + 3);
+    ctx.lineTo(L / 2 + 110, -W / 2 - 22);
+    ctx.lineTo(L / 2 + 110, W / 2 + 22);
+    ctx.lineTo(L / 2, W / 2 - 3);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Body.
+  ctx.fillStyle = car.dead ? '#2b2b2b' : car.color;
+  roundRect(ctx, -L / 2, -W / 2, L, W, 6);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Cabin and windows.
+  ctx.fillStyle = car.dead ? '#1a1a1a' : '#20262e';
+  roundRect(ctx, -L / 2 + L * 0.28, -W / 2 + 4, L * 0.4, W - 8, 4);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(160,210,235,0.5)';
+  roundRect(ctx, -L / 2 + L * 0.3, -W / 2 + 6, L * 0.16, W - 12, 3);
+  ctx.fill();
+
+  // Taxi sign and police markings.
+  if (car.type === 'taxi') {
+    ctx.fillStyle = '#111111';
+    ctx.fillRect(-4, -W / 2 - 2, 14, 5);
+    ctx.fillStyle = '#f5c518';
+    ctx.font = 'bold 5px sans-serif';
+    ctx.fillText('TAXI', -3, -W / 2 + 2);
+  }
+  if (car.type === 'cruiser') {
+    ctx.fillStyle = '#1a5276';
+    ctx.fillRect(-L / 2 + 4, -W / 2 + 2, L - 8, 5);
+    ctx.fillRect(-L / 2 + 4, W / 2 - 7, L - 8, 5);
+    drawLightbar(ctx, car);
+  }
+  if (car.type === 'veteran') {
+    ctx.fillStyle = '#c0392b';
+    ctx.fillRect(-L / 2 + 4, -2, L - 8, 4);
+    drawLightbar(ctx, car);
+  }
+  if (car.type === 'cometa') {
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillRect(-L / 2 + 2, -3, L - 4, 6);
+  }
+
+  // Headlights and tail lights.
+  ctx.fillStyle = night ? '#fff6b0' : '#e8e8c8';
+  ctx.fillRect(L / 2 - 3, -W / 2 + 2, 3, 5);
+  ctx.fillRect(L / 2 - 3, W / 2 - 7, 3, 5);
+  ctx.fillStyle = car.brakeLights ? '#ff2d20' : '#a93226';
+  ctx.fillRect(-L / 2, -W / 2 + 2, 3, 5);
+  ctx.fillRect(-L / 2, W / 2 - 7, 3, 5);
+
+  // Damage smoke.
+  if (car.health < 40 && !car.dead) {
+    ctx.fillStyle = 'rgba(90,90,90,0.6)';
+    ctx.beginPath();
+    ctx.arc(L / 2 - 6, 0, 6 + Math.random() * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawLightbar(ctx, car) {
+  const phase = Math.floor(car.sirenPhase * 4) % 2 === 0;
+  ctx.fillStyle = phase ? '#ff2d20' : '#2d7bff';
+  ctx.fillRect(-6, -8, 12, 5);
+  ctx.fillStyle = phase ? '#2d7bff' : '#ff2d20';
+  ctx.fillRect(-6, 3, 12, 5);
+}
+
+export function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// Steering input that turns a car toward a target point.
+export function steerToward(car, tx, ty) {
+  const want = Math.atan2(ty - car.y, tx - car.x);
+  const d = angleDelta(car.angle, want);
+  return clamp(d * 2.2, -1, 1);
 }

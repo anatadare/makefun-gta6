@@ -1,118 +1,276 @@
-// Combat: bullets and fists. Bullets fly straight, spark off buildings
-// and hurt whatever they touch (people and cars). A punch is a short arc
-// in front of the attacker. The scattergun fires a fan of pellets instead
-// of one round: five chances to hit, none of them flying far. Bullets live
-// in a ring buffer: firing takes the next slot whether it is free or still
-// flying, so a long firefight never runs dry.
+// combat.js — bullets, melee swings and the scattergun. Bullets fly until
+// they hit a building, a car, a person or the edge of their range; a melee
+// swing hits everything in an arc in front of the attacker. Kills feed the
+// wanted system, the mission tracker and the pickup drops.
 
-import { PLAYER } from './config.js';
-import { circleHitsSolid } from './city.js';
+import { WEAPONS, WANTED, ECONOMY } from './config.js';
+import { distance } from './random.js';
+import { circleHitsBuilding } from './world.js';
+import { damageVehicle } from './vehicles.js';
+import { scarePeds } from './pedestrians.js';
+import { addWanted, damageCop } from './police.js';
 
-const POOL = 64;
+export function fireBullet(state, x, y, angle, opts) {
+  state.bullets.push({
+    x, y,
+    vx: Math.cos(angle) * (opts.speed || 900),
+    vy: Math.sin(angle) * (opts.speed || 900),
+    damage: opts.damage || 10,
+    range: opts.range || 320,
+    traveled: 0,
+    owner: opts.owner || 'player', // player | enemy | cop
+    life: 1.2,
+  });
+}
 
-export function createCombat() {
-  const bullets = [];
-  for (let i = 0; i < POOL; i += 1) {
-    bullets.push({
-      active: false, x: 0, y: 0, vx: 0, vy: 0,
-      from: 'player', damage: 0, life: 0,
-    });
+export function fireScattergun(state, x, y, angle) {
+  const w = WEAPONS.scattergun;
+  for (let i = 0; i < w.pellets; i++) {
+    const a = angle + (Math.random() - 0.5) * w.spread * 2;
+    fireBullet(state, x, y, a, { damage: w.damage, range: w.range, owner: 'player', speed: 850 });
   }
-  return { bullets, cursor: 0, sparks: [], flashes: [] };
-}
-
-function launchBullet(combat, x, y, angle, from, damage, speed, life) {
-  const b = combat.bullets[combat.cursor];
-  combat.cursor = (combat.cursor + 1) % POOL;
-  b.active = true;
-  b.x = x + Math.cos(angle) * 20;
-  b.y = y + Math.sin(angle) * 20;
-  b.vx = Math.cos(angle) * speed;
-  b.vy = Math.sin(angle) * speed;
-  b.from = from;
-  b.damage = damage;
-  b.life = life;
-  return b;
-}
-
-export function fireBullet(combat, x, y, angle, from, damage) {
-  const b = launchBullet(combat, x, y, angle, from, damage, PLAYER.bulletSpeed, 1.1);
-  combat.flashes.push({ x: b.x, y: b.y, angle, until: 0.06, big: false });
-  return true;
-}
-
-// A scattergun blast: `count` pellets fanned across `spread` radians,
-// each weaker and shorter-lived than a pistol round.
-export function fireSpread(combat, x, y, angle, from, damage, count, spread) {
-  for (let i = 0; i < count; i += 1) {
-    const offset = (i / Math.max(1, count - 1) - 0.5) * 2 * spread;
-    launchBullet(combat, x, y, angle + offset, from, damage, PLAYER.scatterSpeed, PLAYER.scatterLife);
+  state.fx.muzzle(x + Math.cos(angle) * 22, y + Math.sin(angle) * 22, angle);
+  state.fx.addShake(2.5);
+  state.audio.shot();
+  state.stats.shotsFired += 1;
+  scarePeds(state, x, y, 320);
+  // Firing where a cop can see it draws heat.
+  if (state.wanted > 0 || state.police.nearestCopDistance(state) < WANTED.sightRange) {
+    addWanted(state, WANTED.shootNearCop, '');
   }
-  const mx = x + Math.cos(angle) * 22;
-  const my = y + Math.sin(angle) * 22;
-  combat.flashes.push({ x: mx, y: my, angle, until: 0.09, big: true });
-  return true;
 }
 
-function angleDiff(a, b) {
-  let d = a - b;
-  while (d > Math.PI) d -= Math.PI * 2;
-  while (d < -Math.PI) d += Math.PI * 2;
-  return d;
+export function enemyShoot(state, x, y, angle, owner, damage) {
+  fireBullet(state, x, y, angle, { damage: damage || 6, range: 340, owner, speed: 780 });
+  state.fx.muzzle(x + Math.cos(angle) * 18, y + Math.sin(angle) * 18, angle);
+  state.audio.shot();
 }
 
-// Step the bullets. `targets` is a list of {x, y, radius, kind, ref, dead}
-// a bullet can hit; the caller's onHit decides what a hit does.
-export function updateBullets(combat, dt, city, targets, onHit) {
-  for (const b of combat.bullets) {
-    if (!b.active) continue;
+// A melee swing: everyone in the arc in front of the attacker takes damage.
+export function meleeAttack(state, x, y, angle, range, arc, damage, owner) {
+  const hits = [];
+  const inArc = (tx, ty) => {
+    const d = distance(x, y, tx, ty);
+    if (d > range + 12) return false;
+    const a = Math.atan2(ty - y, tx - x);
+    let dd = a - angle;
+    while (dd > Math.PI) dd -= Math.PI * 2;
+    while (dd < -Math.PI) dd += Math.PI * 2;
+    return Math.abs(dd) < arc;
+  };
+  if (owner === 'player') {
+    for (const ped of state.peds) {
+      if (!ped.down && inArc(ped.x, ped.y)) {
+        damagePed(state, ped, damage);
+        hits.push(ped);
+      }
+    }
+    for (const cop of state.cops) {
+      if (!cop.down && inArc(cop.x, cop.y)) {
+        damageCop(state, cop, damage);
+        hits.push(cop);
+      }
+    }
+    for (const e of state.enemies) {
+      if (!e.down && inArc(e.x, e.y)) {
+        damageEnemy(state, e, damage);
+        hits.push(e);
+      }
+    }
+    if (hits.length > 0) {
+      state.audio.punch();
+      state.fx.addShake(1.5);
+    }
+  }
+  return hits;
+}
+
+export function damagePed(state, ped, amount) {
+  if (ped.down) return;
+  ped.health -= amount;
+  state.fx.blood(ped.x, ped.y);
+  if (ped.health <= 0) {
+    ped.down = true;
+    ped.state = 'wait';
+    addWanted(state, WANTED.killPed, 'Pedestrian down!');
+    state.stats.kills += 1;
+    if (Math.random() < 0.4) dropPickup(state, ped.x, ped.y, 'cash');
+    scarePeds(state, ped.x, ped.y, 300);
+  } else {
+    ped.state = 'flee';
+    ped.stateTimer = 4;
+    ped.fleeFrom = { x: state.player.x, y: state.player.y };
+  }
+}
+
+export function damageEnemy(state, enemy, amount) {
+  if (enemy.down) return;
+  enemy.health -= amount;
+  state.fx.blood(enemy.x, enemy.y);
+  if (enemy.health <= 0) {
+    enemy.down = true;
+    enemy.downTimer = 10;
+    state.stats.kills += 1;
+    if (Math.random() < 0.6) dropPickup(state, enemy.x, enemy.y, 'ammo');
+    else if (Math.random() < 0.4) dropPickup(state, enemy.x, enemy.y, 'health');
+    state.missions.onEnemyKilled(state, enemy);
+  } else {
+    enemy.alerted = true;
+  }
+}
+
+export function dropPickup(state, x, y, kind) {
+  state.pickups.push({
+    x: x + (Math.random() - 0.5) * 20,
+    y: y + (Math.random() - 0.5) * 20,
+    kind, // cash | ammo | health
+    life: 30,
+    bob: Math.random() * 10,
+  });
+}
+
+export function updateBullets(state, dt) {
+  const { player } = state;
+  for (let i = state.bullets.length - 1; i >= 0; i--) {
+    const b = state.bullets[i];
     b.life -= dt;
+    const step = Math.hypot(b.vx, b.vy) * dt;
+    b.traveled += step;
     b.x += b.vx * dt;
     b.y += b.vy * dt;
-    if (b.life <= 0) {
-      b.active = false;
-      continue;
+    let dead = b.life <= 0 || b.traveled >= b.range;
+    if (!dead && circleHitsBuilding(state.city, b.x, b.y, 2)) {
+      state.fx.sparks(b.x, b.y);
+      dead = true;
     }
-    if (circleHitsSolid(city, b.x, b.y, 2)) {
-      b.active = false;
-      combat.sparks.push({ x: b.x, y: b.y, until: 0.18 });
-      continue;
+    if (!dead && b.owner === 'player') {
+      // Peds, cops, enemies, then cars.
+      for (const ped of state.peds) {
+        if (!ped.down && distance(b.x, b.y, ped.x, ped.y) < 12) {
+          damagePed(state, ped, b.damage);
+          dead = true;
+          break;
+        }
+      }
+      if (!dead) {
+        for (const cop of state.cops) {
+          if (!cop.down && distance(b.x, b.y, cop.x, cop.y) < 12) {
+            damageCop(state, cop, b.damage);
+            dead = true;
+            break;
+          }
+        }
+      }
+      if (!dead) {
+        for (const e of state.enemies) {
+          if (!e.down && distance(b.x, b.y, e.x, e.y) < 13) {
+            damageEnemy(state, e, b.damage);
+            dead = true;
+            break;
+          }
+        }
+      }
+      if (!dead) {
+        for (const car of state.cars) {
+          if (car.dead) continue;
+          const dx = b.x - car.x;
+          const dy = b.y - car.y;
+          const localX = dx * Math.cos(-car.angle) - dy * Math.sin(-car.angle);
+          const localY = dx * Math.sin(-car.angle) + dy * Math.cos(-car.angle);
+          if (Math.abs(localX) < 26 && Math.abs(localY) < 14) {
+            damageVehicle(car, b.damage);
+            state.fx.sparks(b.x, b.y);
+            dead = true;
+            break;
+          }
+        }
+      }
+    } else if (!dead && (b.owner === 'enemy' || b.owner === 'cop')) {
+      if (player.car) {
+        const car = player.car;
+        const dx = b.x - car.x;
+        const dy = b.y - car.y;
+        const localX = dx * Math.cos(-car.angle) - dy * Math.sin(-car.angle);
+        const localY = dx * Math.sin(-car.angle) + dy * Math.cos(-car.angle);
+        if (Math.abs(localX) < 26 && Math.abs(localY) < 14) {
+          damageVehicle(car, b.damage);
+          state.fx.sparks(b.x, b.y);
+          dead = true;
+        }
+      } else if (distance(b.x, b.y, player.x, player.y) < 13) {
+        state.police.hurtPlayer(state, b.damage);
+        dead = true;
+      }
     }
-    for (const t of targets) {
-      if (t.dead) continue;
-      // Cops do not shoot their own; the player does not shoot themself.
-      if (b.from === 'cop' && t.kind === 'cop') continue;
-      if (b.from === 'player' && t.kind === 'player') continue;
-      const dx = t.x - b.x;
-      const dy = t.y - b.y;
-      if (dx * dx + dy * dy > t.radius * t.radius) continue;
-      b.active = false;
-      combat.sparks.push({ x: b.x, y: b.y, until: 0.18 });
-      onHit(t, b.damage, b.from);
-      break;
-    }
+    if (dead) state.bullets.splice(i, 1);
   }
-  for (const list of [combat.sparks, combat.flashes]) {
-    for (let i = list.length - 1; i >= 0; i -= 1) {
-      list[i].until -= dt;
-      if (list[i].until <= 0) list.splice(i, 1);
+}
+
+export function updatePickups(state, dt) {
+  const { player } = state;
+  for (let i = state.pickups.length - 1; i >= 0; i--) {
+    const p = state.pickups[i];
+    p.life -= dt;
+    p.bob += dt * 4;
+    if (p.life <= 0) {
+      state.pickups.splice(i, 1);
+      continue;
+    }
+    if (player.onFoot && distance(p.x, p.y, player.x, player.y) < 24) {
+      if (p.kind === 'cash') {
+        const amount = 10 + Math.floor(Math.random() * 20);
+        state.money += amount;
+        state.stats.moneyEarned += amount;
+        state.message = { text: `+$${amount}`, timer: 1.5 };
+        state.audio.cash();
+      } else if (p.kind === 'ammo') {
+        state.ammo = Math.min(WEAPONS.scattergun.maxAmmo, state.ammo + ECONOMY.ammoPickup);
+        state.message = { text: `+${ECONOMY.ammoPickup} shells`, timer: 1.5 };
+        state.audio.pickup();
+      } else if (p.kind === 'health') {
+        state.health = Math.min(100, state.health + ECONOMY.healthPickup);
+        state.message = { text: `+${ECONOMY.healthPickup} health`, timer: 1.5 };
+        state.audio.pickup();
+      }
+      state.fx.cashPop(p.x, p.y);
+      state.pickups.splice(i, 1);
     }
   }
 }
 
-// The nearest target inside the attacker's reach and front arc, or null.
-export function meleeTarget(attacker, angle, range, targets) {
-  let best = null;
-  let bestD = range;
-  for (const t of targets) {
-    if (t.dead) continue;
-    const dx = t.x - attacker.x;
-    const dy = t.y - attacker.y;
-    const d = Math.hypot(dx, dy);
-    if (d > range + t.radius || d >= bestD) continue;
-    if (Math.abs(angleDiff(Math.atan2(dy, dx), angle)) > 1.1) continue;
-    bestD = d;
-    best = t;
+export function drawBullets(ctx, state) {
+  ctx.fillStyle = '#ffe27a';
+  for (const b of state.bullets) {
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 2.5, 0, Math.PI * 2);
+    ctx.fill();
   }
-  return best;
+}
+
+export function drawPickups(ctx, state) {
+  for (const p of state.pickups) {
+    const y = p.y + Math.sin(p.bob) * 2;
+    ctx.save();
+    ctx.translate(p.x, y);
+    if (p.kind === 'cash') {
+      ctx.fillStyle = '#27ae60';
+      ctx.fillRect(-8, -5, 16, 10);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.fillText('$', -3, 4);
+    } else if (p.kind === 'ammo') {
+      ctx.fillStyle = '#c0392b';
+      ctx.fillRect(-6, -6, 12, 12);
+      ctx.fillStyle = '#f5d76e';
+      ctx.fillRect(-4, -4, 3, 8);
+      ctx.fillRect(1, -4, 3, 8);
+    } else {
+      ctx.fillStyle = '#ecf0f1';
+      ctx.fillRect(-7, -7, 14, 14);
+      ctx.fillStyle = '#e74c3c';
+      ctx.fillRect(-2, -6, 4, 12);
+      ctx.fillRect(-6, -2, 12, 4);
+    }
+    ctx.restore();
+  }
 }

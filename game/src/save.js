@@ -1,61 +1,77 @@
-// Progress in localStorage (this browser only): cash, where the story
-// stands, lifetime earnings, found stashes, cars stolen. Saves carry a
-// version number; an older save, or anything unreadable, loads as far as
-// it can and fills the rest with fresh defaults, so a bad save never
-// bricks the game.
+// save.js — saving Solmara to localStorage: money, health, missions done,
+// position, clock, weapon, ammo and run stats. Autosaves after every
+// mission; the pause menu saves on demand; the title screen offers
+// Continue when a save exists.
 
 import { SAVE_KEY } from './config.js';
 
-const SAVE_VERSION = 2;
-
-function freshSave() {
-  return {
-    v: SAVE_VERSION,
-    money: 0,
-    missionIndex: 0,
-    totalEarned: 0,
-    stashes: [],
-    carsStolen: 0,
-  };
+export function hasSave() {
+  try {
+    return !!window.localStorage.getItem(SAVE_KEY);
+  } catch (e) {
+    return false;
+  }
 }
 
-function asNumber(value, fallback) {
-  return Number.isFinite(value) ? value : fallback;
-}
-
-function asIndexList(value) {
-  if (!Array.isArray(value)) return [];
-  return value.filter((n) => Number.isInteger(n) && n >= 0);
-}
-
-function asNonNegativeInt(value, fallback) {
-  if (!Number.isInteger(value)) return fallback;
-  return value < 0 ? 0 : value;
+export function saveGame(state) {
+  try {
+    const data = {
+      version: 1,
+      money: state.money,
+      health: state.health,
+      ammo: state.ammo,
+      weapon: state.weapon,
+      clock: state.clock,
+      missionsDone: state.missionsDone,
+      player: { x: state.player.x, y: state.player.y },
+      stats: state.stats,
+      taxiTotal: state.taxi.total,
+      savedAt: Date.now(),
+    };
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 export function loadSave() {
-  let data = null;
   try {
     const raw = window.localStorage.getItem(SAVE_KEY);
-    if (raw) data = JSON.parse(raw);
-  } catch {
-    data = null;
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || data.version !== 1) return null;
+    return data;
+  } catch (e) {
+    return null;
   }
-  if (!data || typeof data !== 'object') return freshSave();
-  return {
-    v: SAVE_VERSION,
-    money: asNumber(data.money, 0),
-    missionIndex: asNonNegativeInt(data.missionIndex, 0),
-    totalEarned: asNumber(data.totalEarned, 0),
-    stashes: asIndexList(data.stashes),
-    carsStolen: asNonNegativeInt(data.carsStolen, 0),
-  };
 }
 
-export function saveGame(data) {
+export function clearSave() {
   try {
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify({ ...data, v: SAVE_VERSION }));
-  } catch {
-    // Storage can be off (private windows): progress then lasts this visit only.
+    window.localStorage.removeItem(SAVE_KEY);
+  } catch (e) {
+    // No storage, nothing to clear.
+  }
+}
+
+export function applySave(state, data) {
+  state.money = data.money;
+  state.health = data.health;
+  state.ammo = data.ammo || 0;
+  state.weapon = data.weapon || 'fists';
+  state.clock = data.clock;
+  state.missionsDone = data.missionsDone || [];
+  state.stats = { ...state.stats, ...(data.stats || {}) };
+  state.taxi.total = data.taxiTotal || 0;
+  if (data.player) {
+    state.player.x = data.player.x;
+    state.player.y = data.player.y;
+  }
+}
+
+export function autosave(state) {
+  if (saveGame(state)) {
+    state.message = { text: 'Progress saved', timer: 2 };
   }
 }

@@ -1,353 +1,460 @@
-// The story: eight jobs from Lena the fixer and Otis the garage owner,
-// then repeatable fares for money, one in four a rush job against the
-// clock. A mission is a list of steps, each one a kind the updater checks:
-// reach a place, steal a car, lose the cops, beat a clock, wreck a number
-// of cop cars. A step can carry a `done` line, spoken when the step lands,
-// and a `heatOnDone` that raises the wanted level the moment the step
-// completes, so a job can go loud halfway through. The world owns the
-// player and the police; this module only reads them through the context
-// the world passes in, and reports progress back as events.
+// missions.js — the story of Solmara: eight missions from Sal Ferraro's
+// garage to the finale heist, each a chain of steps (go, drive, fight,
+// escape) with step-through dialogue, plus the enemy gang members the
+// combat missions spawn and the dialogue box the whole game shares.
 
-import { MISSIONS, POLICE } from './config.js';
-import { PLACES } from './city.js';
+import { MISSION_REWARDS, STORY } from './config.js';
+import { distance } from './random.js';
 
-// Fares run between these places, never twice to the same spot.
-const FARE_PLACES = ['taxiStand', 'marinaHotel', 'garage', 'docks', 'hideout', 'hospital', 'beach', 'policeStation', 'stadium'];
+const SAL = STORY.fixerName;
+const RIKO = STORY.playerName;
+const VENN = STORY.rivalName;
 
-const DEFS = [
+export const MISSIONS = [
   {
-    id: 'fare',
-    title: 'First Fare',
-    reward: 150,
-    intro: 'LENA: Mars, I need a driver. Taxi stand, downtown. Go.',
-    outro: 'LENA: Clean run. $150 is yours.',
+    id: 'm1',
+    name: 'First Wheels',
+    startAt: 'salGarage',
+    reward: MISSION_REWARDS[0],
+    intro: [
+      { who: SAL, text: 'Riko! You made it to Solmara. Good. I need wheels, and I need them now.' },
+      { who: RIKO, text: 'Hello to you too, Sal. What kind of wheels?' },
+      { who: SAL, text: 'Any kind. Borrow one, bring it to the plaza. Do not let the cops see you take it.' },
+    ],
     steps: [
-      { kind: 'goto', place: 'taxiStand', text: 'Pick up the fare at the Taxi Stand', done: 'LENA: Got them. Marina Hotel, and step on it.' },
-      { kind: 'wait', seconds: 1.5, text: 'Passenger getting in...' },
-      { kind: 'goto', place: 'marinaHotel', text: 'Drop the passenger at the Marina Hotel' },
+      { type: 'enterCar', label: 'Steal a car (E next to one)' },
+      { type: 'driveTo', at: 'downtownPlaza', radius: 90, label: 'Drive to Downtown Plaza' },
+    ],
+    outro: [
+      { who: SAL, text: 'Clean work. You drive like you mean it. There will be more.' },
     ],
   },
   {
-    id: 'wheels',
-    title: 'Hot Wheels',
-    reward: 300,
-    intro: 'OTIS: A Fuego is sitting by the docks. Bring it to my garage. Mind the paint.',
-    outro: 'OTIS: Beautiful. $300, and the garage is open to you.',
+    id: 'm2',
+    name: 'Delivery Run',
+    startAt: 'harborWarehouse',
+    reward: MISSION_REWARDS[1],
+    intro: [
+      { who: SAL, text: 'A crate came in at the harbor. Pick it up, drop it at the market, then the stadium.' },
+      { who: RIKO, text: 'What is in the crate?' },
+      { who: SAL, text: 'Less questions, more driving. The stadium crowd waits for no one.' },
+    ],
     steps: [
-      { kind: 'goto', place: 'docks', text: 'Find the Fuego at the Docks', done: 'OTIS: There it is. Take it and go.' },
-      { kind: 'steal', text: 'Steal the Fuego', done: 'OTIS: You have it. My garage, now.' },
-      { kind: 'goto', place: 'garage', text: "Deliver the Fuego to Otis's Garage" },
+      { type: 'pickup', at: 'harborWarehouse', radius: 70, label: 'Pick up the crate at the harbor' },
+      { type: 'driveTo', at: 'oldTownMarket', radius: 90, label: 'Deliver to Old Town Market' },
+      { type: 'driveTo', at: 'stadiumGate', radius: 90, label: 'Deliver to the Stadium Gate' },
+    ],
+    outro: [
+      { who: SAL, text: 'On time, both stops. The stadium crew owes me one now.' },
     ],
   },
   {
-    id: 'getaway',
-    title: 'The Getaway',
-    reward: 500,
-    intro: 'LENA: The job went loud. Three stars on you. Reach the hideout and lie low.',
-    outro: 'LENA: They lost you. $500. You drive like the wind, Mars.',
+    id: 'm3',
+    name: 'The Informant',
+    startAt: 'southsideAlley',
+    reward: MISSION_REWARDS[2],
+    intro: [
+      { who: SAL, text: 'My informant in Southside has word on Venn. Meet him in the alley. Go alone.' },
+      { who: RIKO, text: 'Venn. The name keeps coming up.' },
+      { who: SAL, text: 'He runs the docks and he hates my guts. Watch your back down there.' },
+    ],
     steps: [
-      { kind: 'goto', place: 'hideout', text: 'Reach the Hideout in Palm Heights', done: 'LENA: You made it. Stay low until the heat dies.' },
-      { kind: 'lose', text: 'Stay out of sight until the heat dies down' },
+      { type: 'goto', at: 'southsideAlley', radius: 70, label: 'Meet the informant in Southside Alley' },
+      { type: 'talk', lines: [
+        { who: 'Informant', text: 'Venn is moving guns through the marina tonight. Big shipment.' },
+        { who: RIKO, text: 'Tonight? Then we hit it first.' },
+        { who: 'Informant', text: 'Wait. Those are his boys, over there. They followed me!' },
+      ], label: 'Talk to the informant' },
+      { type: 'kill', count: 3, at: 'southsideAlley', spread: 120, label: 'Fight off Venn\u2019s thugs (3)' },
+      { type: 'goto', at: 'salGarage', radius: 80, label: 'Report back to Sal' },
+    ],
+    outro: [
+      { who: SAL, text: 'Guns through the marina. Venn is getting bold. We will answer that.' },
     ],
   },
   {
-    id: 'drops',
-    title: 'Three Drops',
-    reward: 700,
-    intro: 'OTIS: Three packages, three stops, no dawdling. Docks first, then the station, the hospital, the hideout.',
-    outro: 'OTIS: All three delivered. $700. You are getting fast, Mars.',
+    id: 'm4',
+    name: 'Payback',
+    startAt: 'marinaPier',
+    reward: MISSION_REWARDS[3],
+    intro: [
+      { who: SAL, text: 'Venn hit one of my drivers last night. Time to answer. His crew is at the marina pier.' },
+      { who: RIKO, text: 'How many?' },
+      { who: SAL, text: 'Five, maybe six. I left you a scattergun in the trunk of my car. Take it.' },
+    ],
     steps: [
-      { kind: 'goto', place: 'docks', text: 'Pick up the packages at the Docks', done: 'OTIS: Packages in the boot. Three stops, no dawdling.' },
-      { kind: 'timed', place: 'policeStation', seconds: 60, text: 'Drop one at the Police Station' },
-      { kind: 'timed', place: 'hospital', seconds: 60, text: 'Drop one at Solmara General' },
-      { kind: 'timed', place: 'hideout', seconds: 60, text: 'Drop the last one at the Hideout' },
+      { type: 'arm', label: 'Pick up the scattergun (+24 shells)' },
+      { type: 'kill', count: 5, at: 'marinaPier', spread: 150, label: 'Clear Venn\u2019s crew from the pier (5)' },
+    ],
+    outro: [
+      { who: SAL, text: 'The marina is ours again. Venn will hear about this before sunset.' },
     ],
   },
   {
-    id: 'delivery',
-    title: 'The Last Delivery',
-    reward: 800,
-    intro: 'OTIS: One package at the docks, one buyer in Palm Heights. Ninety seconds.',
-    outro: 'OTIS: Done. $800. One more job after this, and we are square.',
+    id: 'm5',
+    name: 'Harbor Lights',
+    startAt: 'harborWarehouse',
+    reward: MISSION_REWARDS[4],
+    intro: [
+      { who: SAL, text: 'One more crate, this one at night. Venn has guards on it. Quiet would be nice.' },
+      { who: RIKO, text: 'Quiet is not my best skill, Sal.' },
+      { who: SAL, text: 'Then be loud and be fast. Get the crate to my garage.' },
+    ],
     steps: [
-      { kind: 'goto', place: 'docks', text: 'Pick up the package at the Docks', done: 'OTIS: Ninety seconds. Palm Heights. Go.' },
-      { kind: 'timed', place: 'hideout', seconds: 90, text: 'Deliver to Palm Heights before the clock runs out' },
+      { type: 'night', label: 'Night falls over the harbor...' },
+      { type: 'kill', count: 3, at: 'harborWarehouse', spread: 130, label: 'Deal with the warehouse guards (3)' },
+      { type: 'pickup', at: 'harborWarehouse', radius: 70, label: 'Take the crate' },
+      { type: 'driveTo', at: 'salGarage', radius: 90, label: 'Bring the crate to Sal\u2019s Garage' },
+    ],
+    outro: [
+      { who: SAL, text: 'Beautiful. Whatever is in here pays for a lot of quiet nights.' },
     ],
   },
   {
-    id: 'sprint',
-    title: 'The Solmara Sprint',
-    reward: 1200,
-    intro: 'LENA: One last job. A sprint across the whole town, five stops, beat the clock at every one. Show them what you can do.',
-    outro: 'LENA: That is the whole town, Mars. $1,200. Solmara is yours now.',
+    id: 'm6',
+    name: 'The Getaway',
+    startAt: 'downtownPlaza',
+    reward: MISSION_REWARDS[5],
+    intro: [
+      { who: SAL, text: 'Venn tipped off the cops about the plaza deal. They are coming for you, Riko.' },
+      { who: RIKO, text: 'Three stars already? I just got here!' },
+      { who: SAL, text: 'Lose them, then meet me at the North Lookout. Drive like your life depends on it.' },
+    ],
     steps: [
-      { kind: 'timed', place: 'garage', seconds: 40, text: "Sprint: Otis's Garage" },
-      { kind: 'timed', place: 'policeStation', seconds: 30, text: 'Sprint: Police Station' },
-      { kind: 'timed', place: 'hospital', seconds: 30, text: 'Sprint: Solmara General' },
-      { kind: 'timed', place: 'marinaHotel', seconds: 40, text: 'Sprint: Marina Hotel' },
-      { kind: 'timed', place: 'beach', seconds: 30, text: 'Sprint: Seabreeze Beach' },
+      { type: 'heat', stars: 3, label: 'The cops are on you!' },
+      { type: 'loseWanted', label: 'Lose the cops (drop to 0 stars)' },
+      { type: 'driveTo', at: 'northLookout', radius: 90, label: 'Drive to the North Lookout' },
+    ],
+    outro: [
+      { who: SAL, text: 'You outran half the force. Venn cannot buy that kind of driving.' },
     ],
   },
   {
-    id: 'payback',
-    title: 'Payback',
-    reward: 1500,
-    intro: 'OTIS: The PD impounded my best car. Wreck two of their Interceptors, then come see me. Do not get caught.',
-    outro: 'OTIS: That is for my car. $1,500. Now we are square, Mars. Really square.',
+    id: 'm7',
+    name: 'Inside Man',
+    startAt: 'stadiumGate',
+    reward: MISSION_REWARDS[6],
+    intro: [
+      { who: SAL, text: 'The Big One needs plans. Venn keeps the Exchange blueprints at the stadium.' },
+      { who: RIKO, text: 'The Exchange? Sal, that is the biggest vault in Solmara.' },
+      { who: SAL, text: 'Which is why we need the plans first. Get in, get them, get out.' },
+    ],
     steps: [
-      { kind: 'wreck', count: 2, text: 'Wreck 2 police Interceptors', done: 'OTIS: Two down. Come home.' },
-      { kind: 'goto', place: 'garage', text: "Get back to Otis's Garage" },
+      { type: 'kill', count: 4, at: 'stadiumGate', spread: 140, label: 'Get past the stadium guards (4)' },
+      { type: 'pickup', at: 'stadiumGate', radius: 70, label: 'Take the blueprints' },
+      { type: 'driveTo', at: 'salGarage', radius: 90, label: 'Bring the plans to Sal' },
+    ],
+    outro: [
+      { who: SAL, text: 'These plans are the real thing. One more job, Riko. The big one.' },
     ],
   },
   {
-    id: 'bigone',
-    title: 'The Big One',
-    reward: 2000,
-    intro: 'LENA: One last score, Mars. A Cometa is waiting at the stadium. Take it, run the docks drop in 75 seconds, and whatever you do, do not get caught.',
-    outro: 'LENA: That is the whole story, Mars. $2,000. Solmara is yours now, for good.',
+    id: 'm8',
+    name: 'The Big One',
+    startAt: 'downtownPlaza',
+    reward: MISSION_REWARDS[7],
+    intro: [
+      { who: SAL, text: 'Tonight we hit the Solmara Exchange. Guards, vault, everything. You in?' },
+      { who: RIKO, text: 'Two thousand dollars says I am in.' },
+      { who: SAL, text: 'Then go. Take the loot, lose the heat, and meet me at the garage. No mistakes.' },
+    ],
     steps: [
-      { kind: 'goto', place: 'stadium', text: 'Get to Solmara Stadium', done: 'OTIS: There she is. The Cometa. Take her.' },
-      { kind: 'steal', text: 'Steal the Cometa', done: 'LENA: The docks, 75 seconds. Go, go, go!' },
-      { kind: 'timed', place: 'docks', seconds: 75, heatOnDone: 280, text: 'Drop the package at the Docks', done: 'LENA: Four stars! Lose them, Mars!' },
-      { kind: 'lose', text: 'Lose the cops', done: 'LENA: They lost you. One last stop.' },
-      { kind: 'goto', place: 'garage', text: "Get back to Otis's Garage" },
+      { type: 'goto', at: 'downtownPlaza', radius: 80, label: 'Reach the Solmara Exchange' },
+      { type: 'kill', count: 6, at: 'downtownPlaza', spread: 160, label: 'Take down the Exchange guards (6)' },
+      { type: 'pickup', at: 'downtownPlaza', radius: 70, label: 'Grab the loot' },
+      { type: 'heat', stars: 4, label: 'Four stars! The whole city is coming!' },
+      { type: 'loseWanted', label: 'Lose the cops (drop to 0 stars)' },
+      { type: 'driveTo', at: 'salGarage', radius: 90, label: 'Escape to Sal\u2019s Garage' },
+    ],
+    outro: [
+      { who: SAL, text: 'Two thousand. Clean. You are a legend in this city now, Riko Vale.' },
+      { who: RIKO, text: 'Legend? I am just getting started.' },
     ],
   },
 ];
 
-export const MISSION_COUNT = DEFS.length;
-
-// The car a steal mission plants for the player: type, spot and colour.
-export function missionCarSpec(mission) {
-  if (!mission) return null;
-  if (mission.id === 'wheels') {
-    return { type: 'fuego', x: PLACES.docks.x + 30, y: PLACES.docks.y - 40, color: '#ffd23f' };
-  }
-  if (mission.id === 'bigone') {
-    return { type: 'cometa', x: 2548, y: 860, color: '#e74c3c' };
+export function nextMissionId(state) {
+  for (const m of MISSIONS) {
+    if (!state.missionsDone.includes(m.id)) return m.id;
   }
   return null;
 }
 
-export function createMissions(savedIndex) {
-  const index = Math.max(0, Math.min(savedIndex || 0, DEFS.length));
-  return {
-    index,
-    step: 0,
-    active: false,
-    timer: 0,
-    waitLeft: 0,
-    wrecks: 0,
-    targetCar: null,
-    fare: null,
-    fareCooldown: 0,
-    storyDone: index >= DEFS.length,
-  };
+export function missionById(id) {
+  return MISSIONS.find((m) => m.id === id) || null;
 }
 
-export function currentMission(missions) {
-  return missions.index < DEFS.length ? DEFS[missions.index] : null;
+export function missionStartPoint(state) {
+  const id = nextMissionId(state);
+  if (!id || state.mission) return null;
+  const def = missionById(id);
+  const place = state.city.places[def.startAt];
+  return { x: place.x, y: place.y, def };
 }
 
-export function currentStep(missions) {
-  if (missions.fare) return missions.fare.steps[missions.step] ?? null;
-  const mission = currentMission(missions);
-  if (!mission || !missions.active) return null;
-  return mission.steps[missions.step] ?? null;
+export function tryStartAt(state) {
+  if (state.mission) return false;
+  const marker = missionStartPoint(state);
+  if (!marker) return false;
+  if (distance(state.player.x, state.player.y, marker.x, marker.y) > 80) return false;
+  startMission(state, marker.def.id);
+  return true;
 }
 
-// What the HUD and minimap show: the objective text and its map position.
-export function missionObjective(missions) {
-  const step = currentStep(missions);
+export function startMission(state, id) {
+  const def = missionById(id);
+  if (!def) return;
+  state.mission = { def, stepIndex: 0, killsLeft: 0, startedAt: state.time };
+  state.objective = def.steps[0].label;
+  state.audio.missionStart();
+  state.message = { text: `Mission: ${def.name}`, timer: 3 };
+  startDialogue(state, def.intro, () => {
+    beginStep(state);
+  });
+}
+
+function beginStep(state) {
+  const m = state.mission;
+  if (!m) return;
+  const step = m.def.steps[m.stepIndex];
+  if (!step) {
+    completeMission(state);
+    return;
+  }
+  state.objective = step.label;
+  if (step.type === 'kill') {
+    spawnEnemies(state, step);
+    m.killsLeft = step.count;
+  } else if (step.type === 'arm') {
+    state.ammo = Math.min(48, state.ammo + 24);
+    state.weapon = 'scattergun';
+    state.message = { text: 'Scattergun equipped (+24 shells)', timer: 2.5 };
+    advanceStep(state);
+  } else if (step.type === 'night') {
+    state.clock = 21.5;
+    state.fx.setFlash('#0b1026', 0.7, 1.2);
+    advanceStep(state);
+  } else if (step.type === 'heat') {
+    state.wanted = step.stars;
+    state.wantedTimer = 0;
+    state.message = { text: `${step.stars} stars! Lose the cops!`, timer: 2.5 };
+    advanceStep(state);
+  } else if (step.type === 'talk') {
+    startDialogue(state, step.lines, () => advanceStep(state));
+  }
+}
+
+function advanceStep(state) {
+  const m = state.mission;
+  if (!m) return;
+  m.stepIndex += 1;
+  if (m.stepIndex >= m.def.steps.length) {
+    completeMission(state);
+    return;
+  }
+  beginStep(state);
+}
+
+function completeMission(state) {
+  const m = state.mission;
+  if (!m) return;
+  const def = m.def;
+  state.missionsDone.push(def.id);
+  state.stats.missionsDone += 1;
+  state.money += def.reward;
+  state.stats.moneyEarned += def.reward;
+  state.audio.missionDone();
+  state.fx.cashPop(state.player.x, state.player.y);
+  state.mission = null;
+  state.objective = '';
+  state.enemies = state.enemies.filter((e) => e.down);
+  startDialogue(state, def.outro, () => {
+    state.save.autosave(state);
+    if (state.missionsDone.length >= MISSIONS.length) {
+      state.events.push({ type: 'gameComplete' });
+    } else {
+      const next = missionById(nextMissionId(state));
+      if (next) state.message = { text: `Next mission: ${next.name} — find the gold ! marker`, timer: 4 };
+    }
+  });
+}
+
+export function failMission(state, reason) {
+  if (!state.mission) return;
+  const name = state.mission.def.name;
+  state.mission = null;
+  state.objective = '';
+  state.enemies = [];
+  state.message = { text: `Mission failed: ${name} — ${reason}`, timer: 4 };
+}
+
+export function updateMissions(state, dt) {
+  const m = state.mission;
+  if (!m) return;
+  const step = m.def.steps[m.stepIndex];
+  if (!step) return;
+  const p = state.player;
+
+  if (step.type === 'goto' || step.type === 'pickup') {
+    const place = state.city.places[step.at];
+    if (distance(p.x, p.y, place.x, place.y) < step.radius) {
+      if (step.type === 'pickup') state.audio.pickup();
+      advanceStep(state);
+    }
+  } else if (step.type === 'driveTo') {
+    const place = state.city.places[step.at];
+    if (!p.onFoot && distance(p.x, p.y, place.x, place.y) < step.radius) {
+      advanceStep(state);
+    }
+  } else if (step.type === 'enterCar') {
+    if (!p.onFoot) advanceStep(state);
+  } else if (step.type === 'loseWanted') {
+    if (state.wanted === 0) advanceStep(state);
+  } else if (step.type === 'kill') {
+    if (m.killsLeft <= 0) advanceStep(state);
+  }
+}
+
+export function onEnemyKilled(state, enemy) {
+  const m = state.mission;
+  if (!m) return;
+  const step = m.def.steps[m.stepIndex];
+  if (step && step.type === 'kill') {
+    m.killsLeft = Math.max(0, m.killsLeft - 1);
+    state.objective = `${step.label.split('(')[0].trim()} (${m.killsLeft} left)`;
+  }
+}
+
+export function currentTarget(state) {
+  const m = state.mission;
+  if (!m) return null;
+  const step = m.def.steps[m.stepIndex];
   if (!step) return null;
-  const out = { text: step.text, x: null, y: null, timer: null };
-  if (step.place) {
-    const place = PLACES[step.place];
-    out.x = place.x;
-    out.y = place.y;
+  if (step.at) {
+    const place = state.city.places[step.at];
+    return { x: place.x, y: place.y, radius: step.radius || 70 };
   }
-  if (step.kind === 'timed') {
-    out.timer = Math.max(0, Math.ceil(missions.timer));
-    out.timerTotal = step.seconds;
-  }
-  if (step.kind === 'wreck') {
-    out.text = `${step.text} (${Math.min(missions.wrecks, step.count)}/${step.count})`;
-  }
-  if (step.kind === 'steal' && missions.targetCar) {
-    out.x = missions.targetCar.x;
-    out.y = missions.targetCar.y;
-  }
-  return out;
+  return null;
 }
 
-// The world calls this when a cop car burns out; it only counts while a
-// wreck step is live.
-export function countWreck(missions) {
-  const step = currentStep(missions);
-  if (step && step.kind === 'wreck') missions.wrecks += 1;
-}
+// ---- enemies ----
 
-export function startMission(missions, ctx) {
-  const mission = currentMission(missions);
-  if (!mission) return [];
-  missions.active = true;
-  missions.step = 0;
-  missions.timer = 0;
-  missions.waitLeft = 0;
-  missions.wrecks = 0;
-  const events = [{ type: 'message', text: mission.intro }];
-  const spec = missionCarSpec(mission);
-  if (spec) missions.targetCar = ctx.spawnMissionCar(spec.type, spec.x, spec.y, spec.color);
-  if (mission.id === 'getaway' || mission.id === 'payback') {
-    ctx.setHeat(POLICE.starThresholds[3]);
+export function spawnEnemies(state, step) {
+  const place = state.city.places[step.at];
+  const spread = step.spread || 120;
+  for (let i = 0; i < step.count; i++) {
+    const angle = (i / step.count) * Math.PI * 2;
+    const d = 40 + Math.random() * spread;
+    state.enemies.push({
+      x: place.x + Math.cos(angle) * d,
+      y: place.y + Math.sin(angle) * d,
+      angle: Math.random() * Math.PI * 2,
+      health: 50,
+      speed: 150,
+      shootTimer: 1 + Math.random() * 1.5,
+      alerted: false,
+      down: false,
+      downTimer: 0,
+      bobPhase: Math.random() * 10,
+      shirt: i % 2 === 0 ? '#5b2c6f' : '#7b241c',
+    });
   }
-  return events;
 }
 
-function completeMission(missions, ctx) {
-  const mission = currentMission(missions);
-  const events = [
-    { type: 'message', text: mission.outro },
-    { type: 'complete', mission },
-  ];
-  missions.index += 1;
-  missions.active = false;
-  missions.step = 0;
-  missions.targetCar = null;
-  if (missions.index >= DEFS.length) {
-    missions.storyDone = true;
-    missions.fareCooldown = 6;
-    events.push({ type: 'message', text: 'STORY COMPLETE: Solmara is yours. Fares keep coming.' });
-  }
-  return events;
-}
-
-function failMission(missions) {
-  const mission = currentMission(missions);
-  missions.step = 0;
-  missions.timer = 0;
-  missions.waitLeft = 0;
-  missions.wrecks = 0;
-  return [
-    { type: 'message', text: 'OTIS: Too late. The buyer walked. Try again.' },
-    { type: 'failed', mission },
-  ];
-}
-
-function cancelFare(missions) {
-  missions.fare = null;
-  missions.step = 0;
-  missions.timer = 0;
-  missions.fareCooldown = 5;
-  return [{ type: 'message', text: 'The customer gave up and walked. Next fare soon.' }];
-}
-
-function startFare(missions, ctx) {
-  const from = ctx.random.pick(FARE_PLACES);
-  let to = ctx.random.pick(FARE_PLACES);
-  while (to === from) to = ctx.random.pick(FARE_PLACES);
-  // One fare in four is a rush job: a clock, and better money.
-  const rush = ctx.random.chance(0.25);
-  const reward = rush ? ctx.random.int(150, 220) : ctx.random.int(50, 120);
-  const pickup = { kind: 'goto', place: from, text: `Fare waiting at ${PLACES[from].label}` };
-  const drop = rush
-    ? { kind: 'timed', place: to, seconds: 45, text: `RUSH: Drop the fare at ${PLACES[to].label}` }
-    : { kind: 'goto', place: to, text: `Drop the fare at ${PLACES[to].label}` };
-  missions.fare = { from, to, reward, rush, steps: [pickup, drop] };
-  missions.step = 0;
-  const text = rush
-    ? `LENA: RUSH FARE at ${PLACES[from].label}, going to ${PLACES[to].label}. 45 seconds. $${reward}.`
-    : `LENA: Fare at ${PLACES[from].label}, going to ${PLACES[to].label}. $${reward}.`;
-  return [{ type: 'message', text }];
-}
-
-function atPlace(player, place, radius) {
-  const p = PLACES[place];
-  return Math.hypot(player.x - p.x, player.y - p.y) < radius;
-}
-
-// Advance one step of the active job; returns the events the world should
-// act on (messages, completion, fares). A step that finishes hands over to
-// the next one, or completes the mission when it was the last. A finished
-// step can speak a line and can raise the heat.
-function advanceStep(missions, ctx) {
-  const finished = currentStep(missions);
-  missions.step += 1;
-  const events = [];
-  if (finished) {
-    if (finished.done) events.push({ type: 'message', text: finished.done });
-    if (finished.heatOnDone) ctx.setHeat(finished.heatOnDone);
-  }
-  if (missions.fare) {
-    if (missions.step < missions.fare.steps.length) return events;
-    const reward = missions.fare.reward;
-    missions.fare = null;
-    missions.fareCooldown = 5;
-    events.push(
-      { type: 'message', text: `Fare done. +$${reward}.` },
-      { type: 'fare', reward },
-    );
-    return events;
-  }
-  if (missions.step < currentMission(missions).steps.length) return events;
-  events.push(...completeMission(missions, ctx));
-  return events;
-}
-
-export function updateMissions(missions, dt, ctx) {
-  const events = [];
-  const player = ctx.player;
-
-  // After the story, fares chain themselves with a short breather between.
-  if (missions.storyDone && !missions.fare) {
-    missions.fareCooldown -= dt;
-    if (missions.fareCooldown <= 0) events.push(...startFare(missions, ctx));
-  }
-
-  const step = currentStep(missions);
-  if (!step) return events;
-  const radius = player.onFoot ? 70 : 110;
-
-  if (step.kind === 'goto') {
-    if (atPlace(player, step.place, radius)) events.push(...advanceStep(missions, ctx));
-    return events;
-  }
-  if (step.kind === 'wait') {
-    if (missions.waitLeft <= 0) missions.waitLeft = step.seconds;
-    missions.waitLeft -= dt;
-    if (missions.waitLeft <= 0) events.push(...advanceStep(missions, ctx));
-    return events;
-  }
-  if (step.kind === 'steal') {
-    if (player.car === missions.targetCar) {
-      events.push(...advanceStep(missions, ctx));
-      ctx.addHeat(POLICE.crimeCarTheft);
-      events.push({ type: 'message', text: 'OTIS: The cops saw that. Lose them or outrun them.' });
+export function updateEnemies(state, dt) {
+  const p = state.player;
+  for (const e of state.enemies) {
+    if (e.down) {
+      e.downTimer -= dt;
+      continue;
     }
-    return events;
-  }
-  if (step.kind === 'lose') {
-    if (ctx.police.stars === 0) events.push(...advanceStep(missions, ctx));
-    return events;
-  }
-  if (step.kind === 'wreck') {
-    if (missions.wrecks >= step.count) events.push(...advanceStep(missions, ctx));
-    return events;
-  }
-  if (step.kind === 'timed') {
-    if (missions.timer <= 0) missions.timer = step.seconds;
-    missions.timer -= dt;
-    if (atPlace(player, step.place, radius)) {
-      missions.timer = 0;
-      events.push(...advanceStep(missions, ctx));
-    } else if (missions.timer <= 0) {
-      // A missed rush fare just walks away; a missed story drop fails the job.
-      if (missions.fare) events.push(...cancelFare(missions));
-      else events.push(...failMission(missions));
+    e.bobPhase += dt * 11;
+    const d = distance(e.x, e.y, p.x, p.y);
+    if (!e.alerted && d < 420) e.alerted = true;
+    if (!e.alerted) {
+      // Idle guards pace around their post.
+      e.angle += Math.sin(e.bobPhase * 0.2) * dt;
+      continue;
     }
-    return events;
+    const want = Math.atan2(p.y - e.y, p.x - e.x);
+    e.angle = want;
+    // Close in until in shooting range, then stand and fire.
+    if (d > 260) {
+      const nx = e.x + Math.cos(want) * e.speed * dt;
+      const ny = e.y + Math.sin(want) * e.speed * dt;
+      const resolved = state.world.collideCircle(state.city, nx, ny, 11);
+      e.x = resolved.x;
+      e.y = resolved.y;
+    } else {
+      e.shootTimer -= dt;
+      if (e.shootTimer <= 0) {
+        e.shootTimer = 1.2 + Math.random() * 0.6;
+        state.combat.enemyShoot(state, e.x, e.y, want + (Math.random() - 0.5) * 0.3, 'enemy', 6);
+      }
+    }
   }
-  return events;
+  state.enemies = state.enemies.filter((e) => !e.down || e.downTimer > 0);
 }
 
-export { MISSIONS };
+export function drawEnemy(ctx, e) {
+  if (e.down) return;
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  ctx.rotate(e.angle + Math.PI / 2);
+  const bob = Math.sin(e.bobPhase) * 2;
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(1, 2, 9, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#222';
+  ctx.fillRect(-5, -2 + bob, 4, 10);
+  ctx.fillRect(1, -2 - bob, 4, 10);
+  ctx.fillStyle = e.shirt;
+  ctx.beginPath();
+  ctx.ellipse(0, -3, 7, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#e8b98a';
+  ctx.fillRect(-3, -20, 6, 12);
+  ctx.fillStyle = '#3a3a3a';
+  ctx.fillRect(-2, -26, 4, 14);
+  ctx.fillStyle = '#e8b98a';
+  ctx.beginPath();
+  ctx.arc(0, -11, 5.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#111';
+  ctx.beginPath();
+  ctx.arc(0, -13, 5, Math.PI, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  // Health bar.
+  if (e.health < 50) {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(e.x - 14, e.y - 26, 28, 4);
+    ctx.fillStyle = '#e74c3c';
+    ctx.fillRect(e.x - 14, e.y - 26, 28 * (e.health / 50), 4);
+  }
+}
+
+// ---- dialogue ----
+
+export function startDialogue(state, lines, onDone) {
+  if (!lines || lines.length === 0) {
+    if (onDone) onDone();
+    return;
+  }
+  state.dialogue = { lines, index: 0, onDone };
+  state.mode = 'dialogue';
+}
+
+export function advanceDialogue(state) {
+  const d = state.dialogue;
+  if (!d) return;
+  d.index += 1;
+  state.audio.uiClick();
+  if (d.index >= d.lines.length) {
+    const done = d.onDone;
+    state.dialogue = null;
+    state.mode = 'playing';
+    if (done) done();
+  }
+}

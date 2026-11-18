@@ -1,243 +1,220 @@
-// Pedestrians: the people of Solmara. They walk the sidewalks, turn at
-// crossings, pause now and then to look around, scatter when shots ring
-// out, and go down when a car hits them. A few lie on the sand by the
-// umbrellas, soaking up the sun until trouble finds them. The market
-// stalls have vendors who mind their counters all day, and joggers run
-// the beachfront path at a pace no walker keeps up with.
+// pedestrians.js — the people of Solmara: walkers on the sidewalks, joggers
+// on the promenade, vendors at their carts, and taxi passengers waiting for
+// a ride. They flee from gunfire and near misses, and they keep the city
+// feeling alive between the action.
 
-import { PEDS, PED_SHIRTS, ROADS } from './config.js';
-import { randomRoadPoint, resolveCircle } from './city.js';
+import { PEDS, WORLD } from './config.js';
+import { makeRand, distance, clamp } from './random.js';
+import { randomSidewalkPoint, collideCircle, isOnRoad } from './world.js';
 
-const SIDEWALK_OFFSET = ROADS.halfWidth + 13;
+const SHIRTS = ['#e74c3c', '#3498db', '#f1c40f', '#9b59b6', '#1abc9c', '#e67e22', '#ecf0f1', '#2c3e50', '#fd79a8', '#00b894'];
+const PANTS = ['#2c3e50', '#7f8c8d', '#5d4037', '#37474f', '#4a235a'];
+const SKINS = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac'];
 
-// Pick a sidewalk to walk: a road, a side of it, and a starting point.
-function randomSidewalkLine(random) {
-  const side = random.sign();
-  if (random.chance(0.5)) {
-    const road = random.pick(ROADS.vertical);
-    return { axis: 'v', road, side, x: road + side * SIDEWALK_OFFSET, y: random.range(80, 2320) };
-  }
-  const road = random.pick(ROADS.horizontal);
-  return { axis: 'h', road, side, x: random.range(80, 3320), y: road + side * SIDEWALK_OFFSET };
-}
+let nextPedId = 1;
 
-function basePed(random, x, y) {
-  const angle = random.range(0, Math.PI * 2);
-  const speed = random.range(PEDS.walkMin, PEDS.walkMax);
-  const shirt = random.pick(PED_SHIRTS);
-  const dir = random.sign();
-  const seed = random.range(0, 100);
+export function createPed(x, y, kind) {
   return {
-    x,
-    y,
-    angle,
-    speed,
-    shirt,
-    axis: 'h',
-    road: 2300,
-    side: 1,
-    dir,
-    kind: 'walk',
-    state: 'walk',
-    fleeUntil: 0,
-    downUntil: 0,
-    idleUntil: 0,
-    seed,
+    id: nextPedId++,
+    kind: kind || 'walker', // walker | jogger | vendor | passenger
+    x, y,
+    angle: Math.random() * Math.PI * 2,
+    speed: 0,
+    target: null,
+    state: 'walk', // walk | flee | wait | ride | down
+    stateTimer: 0,
+    shirt: SHIRTS[Math.floor(Math.random() * SHIRTS.length)],
+    pants: PANTS[Math.floor(Math.random() * PANTS.length)],
+    skin: SKINS[Math.floor(Math.random() * SKINS.length)],
+    hair: Math.random() < 0.5 ? '#2c1e12' : '#6b4a2f',
+    health: 30,
+    down: false,
+    bobPhase: Math.random() * 10,
+    cart: null,
+    fare: null,
   };
 }
 
-function makePed(city, random, nearX, nearY) {
-  const spot = randomRoadPoint(random, nearX, nearY, 120, PEDS.spawnDistance);
-  const line = randomSidewalkLine(random);
-  const ped = basePed(random, spot.x, spot.y);
-  ped.axis = line.axis;
-  ped.road = line.road;
-  ped.side = line.side;
-  snapToSidewalk(ped);
-  return ped;
-}
-
-function snapToSidewalk(ped) {
-  if (ped.axis === 'v') ped.x = ped.road + ped.side * SIDEWALK_OFFSET;
-  else ped.y = ped.road + ped.side * SIDEWALK_OFFSET;
-}
-
-// Sunbathers: one per umbrella, lying still on the sand.
-function makeSunbathers(city, random) {
-  const out = [];
-  const spots = [...city.umbrellas];
-  for (let i = 0; i < PEDS.sunbathers && spots.length > 0; i += 1) {
-    const spot = spots.splice(Math.floor(random.next() * spots.length), 1)[0];
-    const ped = basePed(random, spot.x + 16, spot.y + 12);
-    ped.angle = spot.angle;
-    ped.kind = 'sun';
-    ped.state = 'sun';
-    out.push(ped);
+export function spawnPeds(city, seed) {
+  const rand = makeRand(seed + 991);
+  const peds = [];
+  for (let i = 0; i < PEDS.count; i++) {
+    const p = randomSidewalkPoint(rand);
+    const ped = createPed(p.x, p.y, rand.chance(0.12) ? 'jogger' : 'walker');
+    ped.target = randomSidewalkPoint(rand);
+    ped.speed = ped.kind === 'jogger'
+      ? PEDS.jogSpeed
+      : rand.float(PEDS.walkMin, PEDS.walkMax);
+    peds.push(ped);
   }
-  return out;
-}
-
-// Vendors: one behind each of the first few market stalls, minding the
-// counter. They stand their ground until trouble scares them off.
-function makeVendors(city, random) {
-  const out = [];
-  const market = city.blocks.find((b) => b.kind === 'market');
-  if (!market || !market.stalls) return out;
-  for (let i = 0; i < PEDS.vendors && i < market.stalls.length; i += 1) {
-    const stall = market.stalls[i];
-    const ped = basePed(random, stall.x + stall.w / 2, stall.y + stall.h + 14);
+  // Vendors stand at their carts.
+  for (const spot of city.vendorSpots) {
+    const ped = createPed(spot.x, spot.y + 16, 'vendor');
+    ped.cart = spot.kind;
+    ped.state = 'wait';
     ped.angle = -Math.PI / 2;
-    ped.speed = 0;
-    ped.kind = 'vendor';
-    ped.state = 'idle';
-    ped.idleUntil = Infinity;
-    out.push(ped);
+    peds.push(ped);
   }
-  return out;
-}
-
-// Joggers: fast runners on the beachfront path, out for their morning run.
-function makeJoggers(city, random) {
-  const out = [];
-  for (let i = 0; i < PEDS.joggers; i += 1) {
-    const ped = basePed(random, random.range(120, 3280), 0);
-    ped.axis = 'h';
-    ped.road = 2300;
-    ped.side = -1;
-    ped.speed = random.range(PEDS.jogMin, PEDS.jogMax);
-    ped.kind = 'jog';
-    ped.state = 'walk';
-    snapToSidewalk(ped);
-    out.push(ped);
+  // A few joggers run the beach promenade.
+  for (let i = 0; i < 4; i++) {
+    const ped = createPed(rand.float(200, WORLD.width - 200), 2405, 'jogger');
+    ped.target = { x: rand.float(200, WORLD.width - 200), y: 2405 };
+    ped.speed = PEDS.jogSpeed;
+    peds.push(ped);
   }
-  return out;
+  return peds;
 }
 
-export function createPedestrians(city, random) {
-  return {
-    peds: [...makeSunbathers(city, random), ...makeVendors(city, random), ...makeJoggers(city, random)],
-    city,
-    random,
-  };
-}
-
-function maybeTurn(ped, random) {
-  // At a crossing, sometimes turn onto the road that crosses this one.
-  const crossings = ped.axis === 'v' ? ROADS.horizontal : ROADS.vertical;
-  const along = ped.axis === 'v' ? ped.y : ped.x;
-  for (const c of crossings) {
-    if (Math.abs(along - c) < 12 && random.chance(0.35)) {
-      ped.axis = ped.axis === 'v' ? 'h' : 'v';
-      ped.road = c;
-      ped.side = random.sign();
-      ped.dir = random.sign();
-      snapToSidewalk(ped);
-      return;
+export function scarePeds(state, x, y, radius) {
+  for (const ped of state.peds) {
+    if (ped.down || ped.kind === 'vendor') continue;
+    if (distance(ped.x, ped.y, x, y) < radius) {
+      ped.state = 'flee';
+      ped.stateTimer = 3 + Math.random() * 2;
+      ped.fleeFrom = { x, y };
     }
   }
 }
 
-export function scarePeds(peds, x, y, radius, now) {
-  for (const ped of peds.peds) {
-    if (ped.state === 'down') continue;
-    if (Math.hypot(ped.x - x, ped.y - y) >= radius) continue;
-    ped.kind = 'walk';
-    ped.state = 'flee';
-    ped.fleeUntil = now + 3;
-    ped.fleeAngle = Math.atan2(ped.y - y, ped.x - x);
-  }
-}
+export function updatePeds(state, dt) {
+  const { city, peds, player } = state;
+  for (const ped of peds) {
+    if (ped.down) continue;
+    ped.bobPhase += dt * (ped.state === 'flee' ? 14 : ped.kind === 'jogger' ? 12 : 7);
 
-// A car ran one down: they stay on the ground a while, then get up and run.
-export function knockDown(ped, now) {
-  if (ped.state === 'down') return;
-  ped.kind = 'walk';
-  ped.state = 'down';
-  ped.downUntil = now + 4;
-}
-
-function walkStep(ped, dt) {
-  const step = ped.speed * dt;
-  if (ped.axis === 'v') {
-    ped.y += ped.dir * step;
-    if (ped.y < 40) {
-      ped.y = 40;
-      ped.dir = 1;
-    }
-    if (ped.y > 2340) {
-      ped.y = 2340;
-      ped.dir = -1;
-    }
-    ped.angle = ped.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-  } else {
-    ped.x += ped.dir * step;
-    if (ped.x < 40) {
-      ped.x = 40;
-      ped.dir = 1;
-    }
-    if (ped.x > 3360) {
-      ped.x = 3360;
-      ped.dir = -1;
-    }
-    ped.angle = ped.dir > 0 ? 0 : Math.PI;
-  }
-}
-
-export function updatePedestrians(peds, dt, now, player) {
-  const { city, random } = peds;
-  let walkers = 0;
-  for (const p of peds.peds) {
-    if (p.kind === 'walk' || p.kind === 'jog') walkers += 1;
-  }
-  while (walkers < PEDS.count) {
-    peds.peds.push(makePed(city, random, player.x, player.y));
-    walkers += 1;
-  }
-  for (let i = peds.peds.length - 1; i >= 0; i -= 1) {
-    const ped = peds.peds[i];
-    const dPlayer = Math.hypot(ped.x - player.x, ped.y - player.y);
-    // Sunbathers and vendors stay on their patch; walkers recycle with distance.
-    if (ped.kind !== 'sun' && ped.kind !== 'vendor' && dPlayer > PEDS.despawnDistance) {
-      peds.peds.splice(i, 1);
+    if (ped.state === 'wait' || ped.kind === 'vendor') {
+      // Vendors and waiting passengers stand still, watching the street.
+      ped.angle += Math.sin(ped.bobPhase * 0.3) * dt * 0.2;
       continue;
     }
-    if (ped.state === 'sun') continue;
-    if (ped.state === 'down') {
-      if (now > ped.downUntil) {
-        ped.state = 'flee';
-        ped.fleeUntil = now + 2.5;
-        ped.fleeAngle = Math.atan2(ped.y - player.y, ped.x - player.x);
-      }
-      continue;
-    }
+
     if (ped.state === 'flee') {
-      ped.x += Math.cos(ped.fleeAngle) * PEDS.fleeSpeed * dt;
-      ped.y += Math.sin(ped.fleeAngle) * PEDS.fleeSpeed * dt;
-      ped.angle = ped.fleeAngle;
-      resolveCircle(city, ped, 10);
-      if (now > ped.fleeUntil) {
+      ped.stateTimer -= dt;
+      const away = Math.atan2(ped.y - ped.fleeFrom.y, ped.x - ped.fleeFrom.x);
+      ped.angle = away;
+      movePed(state, ped, PEDS.fleeSpeed, dt);
+      if (ped.stateTimer <= 0) {
         ped.state = 'walk';
-        const spot = randomRoadPoint(random, ped.x, ped.y, 0, 200);
-        ped.x = spot.x;
-        ped.y = spot.y;
-        snapToSidewalk(ped);
+        ped.target = randomSidewalkPoint(state.rand);
       }
       continue;
     }
-    if (ped.state === 'idle') {
-      // A vendor's idle never ends on its own: they mind the stall.
-      if (now > ped.idleUntil) ped.state = 'walk';
-      continue;
+
+    // Walkers and joggers head for their target, then pick a new one.
+    if (!ped.target || distance(ped.x, ped.y, ped.target.x, ped.target.y) < 24) {
+      ped.target = ped.kind === 'jogger' && ped.y > 2350
+        ? { x: state.rand.float(200, WORLD.width - 200), y: 2405 }
+        : randomSidewalkPoint(state.rand);
     }
-    // Walking the sidewalk, with the odd pause to look around. Joggers
-    // never pause: the run is the point.
-    walkStep(ped, dt);
-    maybeTurn(ped, random);
-    if (ped.kind !== 'jog' && random.chance(PEDS.idleChance * dt)) {
-      ped.state = 'idle';
-      ped.idleUntil = now + random.range(PEDS.idleMin, PEDS.idleMax);
+    const want = Math.atan2(ped.target.y - ped.y, ped.target.x - ped.x);
+    let d = want - ped.angle;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    ped.angle += clamp(d, -3 * dt, 3 * dt);
+    movePed(state, ped, ped.speed, dt);
+
+    // A car bearing down on a pedestrian makes them dive out of the way.
+    for (const car of state.cars) {
+      if (car.dead || Math.abs(car.speed) < 60) continue;
+      const dx = ped.x - car.x;
+      const dy = ped.y - car.y;
+      const ahead = dx * Math.cos(car.angle) + dy * Math.sin(car.angle);
+      const side = Math.abs(-dx * Math.sin(car.angle) + dy * Math.cos(car.angle));
+      if (ahead > 0 && ahead < 130 && side < 30) {
+        ped.state = 'flee';
+        ped.stateTimer = 2.5;
+        ped.fleeFrom = { x: car.x, y: car.y };
+        break;
+      }
     }
-    ped.x = Math.max(20, Math.min(3380, ped.x));
-    ped.y = Math.max(20, Math.min(2500, ped.y));
+
+    // Recycle walkers that wandered far from the player.
+    if (distance(ped.x, ped.y, player.x, player.y) > 1600 && ped.kind !== 'vendor') {
+      const p = randomSidewalkPoint(state.rand);
+      ped.x = clamp(player.x + (p.x - 1800) * 0.4, 60, WORLD.width - 60);
+      ped.y = clamp(player.y + (p.y - 1350) * 0.4, 60, 2400);
+      ped.target = randomSidewalkPoint(state.rand);
+    }
   }
+}
+
+function movePed(state, ped, speed, dt) {
+  const nx = ped.x + Math.cos(ped.angle) * speed * dt;
+  const ny = ped.y + Math.sin(ped.angle) * speed * dt;
+  const resolved = collideCircle(state.city, nx, ny, 10);
+  ped.x = resolved.x;
+  ped.y = resolved.y;
+  // Walkers avoid standing in the road: nudge them toward the sidewalk.
+  if (ped.kind === 'walker' && isOnRoad(ped.x, ped.y, -6)) {
+    ped.target = randomSidewalkPoint(state.rand);
+  }
+}
+
+export function drawPed(ctx, ped, night) {
+  ctx.save();
+  ctx.translate(ped.x, ped.y);
+  const bob = Math.sin(ped.bobPhase) * (ped.state === 'flee' || ped.kind === 'jogger' ? 2.5 : 1.2);
+
+  if (ped.kind === 'vendor' && ped.cart) {
+    drawCart(ctx, ped);
+  }
+
+  ctx.rotate(ped.angle + Math.PI / 2);
+  // Shadow.
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(1, 2, 9, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Legs.
+  ctx.fillStyle = ped.pants;
+  ctx.fillRect(-5, -2 + bob, 4, 10);
+  ctx.fillRect(1, -2 - bob, 4, 10);
+  // Body.
+  ctx.fillStyle = ped.shirt;
+  ctx.beginPath();
+  ctx.ellipse(0, -3, 7, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Arms.
+  ctx.fillStyle = ped.skin;
+  ctx.fillRect(-9, -6 + bob, 3, 8);
+  ctx.fillRect(6, -6 - bob, 3, 8);
+  // Head.
+  ctx.fillStyle = ped.skin;
+  ctx.beginPath();
+  ctx.arc(0, -11, 5.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = ped.hair;
+  ctx.beginPath();
+  ctx.arc(0, -13, 5, Math.PI, Math.PI * 2);
+  ctx.fill();
+  // Passenger marker: a waving hand.
+  if (ped.kind === 'passenger') {
+    ctx.fillStyle = '#f5c518';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('TAXI?', -16, -22);
+  }
+  ctx.restore();
+
+  if (ped.down) {
+    ctx.save();
+    ctx.translate(ped.x, ped.y);
+    ctx.fillStyle = 'rgba(169,50,38,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 14, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawCart(ctx, ped) {
+  const colors = { tacos: '#e67e22', dogs: '#c0392b', fruit: '#27ae60', ice: '#85c1e9', coffee: '#6e4b2a' };
+  ctx.fillStyle = colors[ped.cart] || '#e67e22';
+  ctx.fillRect(-14, -26, 28, 14);
+  ctx.fillStyle = '#f8f9f9';
+  ctx.fillRect(-14, -26, 28, 4);
+  ctx.fillStyle = '#333';
+  ctx.beginPath();
+  ctx.arc(-9, -10, 3, 0, Math.PI * 2);
+  ctx.arc(9, -10, 3, 0, Math.PI * 2);
+  ctx.fill();
 }

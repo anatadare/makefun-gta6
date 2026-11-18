@@ -1,48 +1,67 @@
-// The game's dice: one seeded stream every system draws from in turn.
-// Same seed, same city, same traffic, same staged screenshot scenes, so
-// a shot is repeatable frame for frame. The stream is mulberry32, a small
-// fast generator with a long period; nothing here touches Math.random.
-// The only unseeded randomness in the game is cosmetic dust and smoke.
+// random.js — a small seeded random number generator and the helpers the
+// city builder and the spawn systems use. The city is deterministic: the
+// same seed always builds the same Solmara.
 
-const SEED_STEP = 0x6d2b79f5;
+export function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function next() {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
-export function createRandom(seed) {
-  // A zero seed would lock the stream, so it falls back to the step itself.
-  let cursor = (seed >>> 0) || SEED_STEP;
+// Range helpers bound to one generator, so call sites stay readable.
+export function makeRand(seed) {
+  const next = mulberry32(seed);
+  return {
+    next,
+    float(min, max) {
+      return min + next() * (max - min);
+    },
+    int(min, max) {
+      return Math.floor(min + next() * (max - min + 1));
+    },
+    pick(list) {
+      return list[Math.floor(next() * list.length)];
+    },
+    chance(p) {
+      return next() < p;
+    },
+    angle() {
+      return next() * Math.PI * 2;
+    },
+  };
+}
 
-  // The next float in [0, 1): advance the state, scramble it, scale it.
-  function next() {
-    cursor = (cursor + SEED_STEP) >>> 0;
-    let mix = cursor;
-    mix = Math.imul(mix ^ (mix >>> 15), mix | 1);
-    mix ^= mix + Math.imul(mix ^ (mix >>> 7), mix | 61);
-    return ((mix ^ (mix >>> 14)) >>> 0) / 4294967296;
-  }
+export function clamp(value, min, max) {
+  return value < min ? min : value > max ? max : value;
+}
 
-  // A float in [min, max).
-  function range(min, max) {
-    return min + (max - min) * next();
-  }
+export function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
 
-  // An integer in [min, max], both ends included.
-  function int(min, max) {
-    return min + Math.floor(next() * (max + 1 - min));
-  }
+export function dist2(ax, ay, bx, by) {
+  const dx = ax - bx;
+  const dy = ay - by;
+  return dx * dx + dy * dy;
+}
 
-  // A random member of a list.
-  function pick(list) {
-    return list[Math.floor(next() * list.length)];
-  }
+export function distance(ax, ay, bx, by) {
+  return Math.sqrt(dist2(ax, ay, bx, by));
+}
 
-  // True with probability p.
-  function chance(p) {
-    return next() < p;
-  }
+// Shortest signed turn from angle a toward angle b, in (-PI, PI].
+export function angleDelta(a, b) {
+  let d = (b - a) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
 
-  // Either -1 or 1, evenly.
-  function sign() {
-    return next() < 0.5 ? -1 : 1;
-  }
-
-  return { next, range, int, pick, chance, sign };
+export function angleLerp(a, b, t) {
+  return a + angleDelta(a, b) * t;
 }

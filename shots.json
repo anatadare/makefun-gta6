@@ -1,18 +1,1 @@
-[
-  {
-    "name": "1-chase.jpg",
-    "query": "?shot=chase&seed=1"
-  },
-  {
-    "name": "2-drive.jpg",
-    "query": "?shot=drive&seed=1"
-  },
-  {
-    "name": "3-foot.jpg",
-    "query": "?shot=foot&seed=1"
-  },
-  {
-    "name": "4-start.jpg",
-    "query": "?shot=start&seed=1"
-  }
-]
+{"height":720,"quality":80,"shots":[{"file":"1-chase.jpg","note":"Dusk police chase, 3 stars, mission objective on the HUD","scene":"chase","waitMs":2000},{"file":"2-drive.jpg","note":"Daytime taxi fare through downtown, traffic and minimap","scene":"drive","waitMs":1800},{"file":"3-foot.jpg","note":"On-foot shootout at the stadium gate, scattergun out","scene":"foot","waitMs":2200},{"file":"4-start.jpg","note":"Title screen over the drifting city, controls listed","scene":"title","waitMs":1200}],"width":1280}
