@@ -1,8 +1,9 @@
 // Sound, synthesized live with WebAudio: no files, no network. An engine
 // hum that follows the car's speed, a two-tone siren for nearby cop cars, a
 // bass groove with a sparse lead line for cruising, and short blips for
-// shots, crashes, pickups, paydays and the sting when the heat rises.
-// Everything waits for the first user gesture, as browsers require.
+// shots, the scattergun's boom, crashes, pickups, paydays and the sting
+// when the heat rises. Everything waits for the first user gesture, as
+// browsers require.
 
 export function createAudio() {
   return {
@@ -151,6 +152,13 @@ export function setSiren(audio, closeness) {
 
 export function playShot(audio) {
   playNoise(audio, 0.12, 0.5, 'lowpass', 2800);
+}
+
+// The scattergun: a deep thump under a wide burst of noise.
+export function playScatter(audio) {
+  if (!audio.ctx) return;
+  blip(audio, 90, 0.25, 'sine', 0.6, 40);
+  playNoise(audio, 0.22, 0.55, 'lowpass', 1400);
 }
 
 export function playCrash(audio, strength) {

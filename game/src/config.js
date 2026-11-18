@@ -1,14 +1,20 @@
-// SOLMARA — the tuning table. One file holds every number the game runs on:
-// the city grid, the car roster, the heat model, the palette. Nothing else in
-// the game hard-codes a speed, a price or a colour; change it here and the
-// whole game follows. The world is 3400 x 2600; the camera shows a 1280 x 720
-// slice of it, scaled to the browser window.
+// SOLMARA's tuning table. Every number the game runs on lives here: the
+// size of the world, the street grid, how Mars moves, every car in the
+// roster, how the wanted level grows, the palette, and the clock that turns
+// day into night. Nothing elsewhere hard-codes a speed, a price, a colour
+// or an hour; change it here and the whole game follows.
+//
+// The world is 3400 x 2600 px. The camera shows a 1280 x 720 slice of it,
+// scaled to the browser window. One game day lasts 8 real minutes, starting
+// at 10 in the morning, so a long session sees dusk fall and the headlights
+// come on.
 
 export const STEP = 1 / 60;
 export const VIEW = { width: 1280, height: 720 };
 export const WORLD = { width: 3400, height: 2600 };
 
-// Streets run on a 400 px grid. The 2300 avenue hugs the beachfront.
+// Streets on a 400 px grid. The 2300 avenue runs along the beachfront,
+// close enough to 2200 that no block fits between them.
 export const ROADS = {
   vertical: [200, 600, 1000, 1400, 1800, 2200, 2600, 3000],
   horizontal: [200, 600, 1000, 1400, 1800, 2200, 2300],
@@ -19,8 +25,27 @@ export const ROADS = {
 // Sand, then open water, along the south edge of the map.
 export const BEACH = { sandY: 2380, waterY: 2520 };
 
-// Mars on foot: quick enough to outrun a cop on a straight sprint, but a car
-// is always the faster escape.
+// The clock: how long a day lasts, and what time the story opens at.
+export const DAY = { seconds: 480, startHour: 10 };
+
+// The hour of day (0-24) at a given world time, in seconds.
+export function hourOfDay(time) {
+  const frac = (time / DAY.seconds) % 1;
+  return (DAY.startHour + frac * 24) % 24;
+}
+
+// How dark it is, 0 at noon to 1 at midnight: 0 through the day, rising
+// across dusk (17-19), full at night (19-6), falling across dawn (6-7).
+export function nightFactor(time) {
+  const h = hourOfDay(time);
+  if (h >= 7 && h < 17) return 0;
+  if (h >= 17 && h < 19) return (h - 17) / 2;
+  if (h >= 19 || h < 6) return 1;
+  return 1 - (h - 6);
+}
+
+// Mars on foot: fast enough to outrun a cop on a straight sprint, but a car
+// is always the better escape.
 export const PLAYER = {
   radius: 13,
   walkSpeed: 210,
@@ -34,15 +59,26 @@ export const PLAYER = {
   bulletDamage: 34,
   regenDelay: 5,
   regenRate: 6,
+  // The scattergun: five pellets in a fan, brutal up close, slow to reload.
+  scatterCooldown: 0.7,
+  scatterPellets: 5,
+  scatterDamage: 16,
+  scatterSpread: 0.22,
+  scatterSpeed: 800,
+  scatterLife: 0.6,
 };
 
-// Six cars. speed is px/s, accel px/s^2; grip is how fast sideways slide dies.
+// Eight cars. speed is px/s, accel px/s^2; grip is how fast sideways slide
+// dies. The Cometa is a muscle car: huge pull, loose tail. The taxi is the
+// city's workhorse, everywhere at once.
 export const CAR_TYPES = {
   duna: { name: 'Duna', kind: 'sedan', topSpeed: 400, accel: 300, reverse: 150, grip: 8.5, turn: 3.3, length: 52, width: 26 },
   brisa: { name: 'Brisa', kind: 'coupe', topSpeed: 460, accel: 350, reverse: 160, grip: 9.5, turn: 3.7, length: 50, width: 25 },
   tortuga: { name: 'Tortuga', kind: 'van', topSpeed: 330, accel: 230, reverse: 130, grip: 7.5, turn: 2.8, length: 58, width: 28 },
   fuego: { name: 'Fuego', kind: 'sports', topSpeed: 540, accel: 430, reverse: 170, grip: 10.5, turn: 4.0, length: 50, width: 25 },
   camino: { name: 'Camino', kind: 'pickup', topSpeed: 380, accel: 280, reverse: 150, grip: 8, turn: 3.2, length: 56, width: 27 },
+  taxi: { name: 'Taxi', kind: 'taxi', topSpeed: 420, accel: 330, reverse: 160, grip: 9, turn: 3.5, length: 52, width: 26 },
+  cometa: { name: 'Cometa', kind: 'muscle', topSpeed: 520, accel: 460, reverse: 160, grip: 7.5, turn: 3.4, length: 54, width: 27 },
   interceptor: { name: 'Interceptor', kind: 'police', topSpeed: 500, accel: 390, reverse: 170, grip: 10, turn: 3.8, length: 52, width: 26 },
 };
 
@@ -71,6 +107,11 @@ export const PEDS = {
   despawnDistance: 1000,
   // Sunbathers lying on the sand by the umbrellas; they never despawn.
   sunbathers: 6,
+  // Vendors who mind the market stalls, and joggers on the beachfront path.
+  vendors: 4,
+  joggers: 4,
+  jogMin: 150,
+  jogMax: 190,
   idleChance: 0.25,
   idleMin: 1,
   idleMax: 3.5,
@@ -104,6 +145,10 @@ export const POLICE = {
   footSpeedBase: 245,
   footSpeedPerStar: 10,
   separation: 70,
+  // At four stars the veterans take over: steadier aim, tighter groups.
+  veteranStars: 4,
+  spreadRookie: 0.35,
+  spreadVeteran: 0.16,
 };
 
 // The story, in order. missions.js holds the steps; this is the short list.
@@ -115,6 +160,7 @@ export const MISSIONS = [
   { id: 'delivery', title: 'The Last Delivery', reward: 800 },
   { id: 'sprint', title: 'The Solmara Sprint', reward: 1200 },
   { id: 'payback', title: 'Payback', reward: 1500 },
+  { id: 'bigone', title: 'The Big One', reward: 2000 },
 ];
 
 export const SAVE_KEY = 'solmara.save.v1';

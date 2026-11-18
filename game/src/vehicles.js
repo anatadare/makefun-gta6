@@ -1,8 +1,9 @@
-// Cars and how they move. A car keeps a velocity vector; each step splits it
-// into the part along the heading and the sideways slide. Throttle and drag
-// work on the forward part, grip kills the slide, so a car slides a little
-// through a turn and a lot with the handbrake on. Off the asphalt the ground
-// drags: sand and grass are slow going, which is why the roads matter.
+// Cars and how they move. A car keeps a velocity vector; each step splits
+// it into the part along the heading and the sideways slide. Throttle and
+// drag work on the forward part, grip kills the slide, so a car slides a
+// little through a turn and a lot with the handbrake on. Off the asphalt
+// the ground drags: sand and grass are slow going, which is why the roads
+// matter. The muscle car's loose grip makes it drift where a sedan grips.
 
 import { CAR_TYPES } from './config.js';
 import { pointOnRoad, resolveCircle } from './city.js';

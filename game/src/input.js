@@ -1,7 +1,7 @@
 // Keyboard and mouse, as one binding table. Held keys drive movement and
-// driving; one-shot presses (start, pause, enter a car, punch, mute) set a
-// bit that the loop takes once per frame, so a press between frames is never
-// lost. The mouse aims on foot and fires while held.
+// driving; one-shot presses (start, pause, enter a car, punch, swap weapon,
+// mute) set a bit that the loop takes once per frame, so a press between
+// frames is never lost. The mouse aims on foot and fires while held.
 
 export const ACTION_CONFIRM = 1;
 export const ACTION_PAUSE = 2;
@@ -9,6 +9,8 @@ export const ACTION_ENTER = 4;
 export const ACTION_PUNCH = 8;
 export const ACTION_MUTE = 16;
 export const ACTION_RESTART = 32;
+export const ACTION_SWAP = 64;
+export const ACTION_TIME = 128;
 
 // code -> what it does. 'hold' keys set a flag while down; 'tap' keys queue
 // an action bit on the first press (repeats ignored).
@@ -29,6 +31,8 @@ const BINDINGS = {
   Escape: { tap: ACTION_PAUSE },
   KeyE: { tap: ACTION_ENTER },
   KeyF: { tap: ACTION_PUNCH },
+  KeyQ: { tap: ACTION_SWAP },
+  KeyN: { tap: ACTION_TIME },
   KeyM: { tap: ACTION_MUTE },
   KeyR: { tap: ACTION_RESTART },
 };
@@ -44,6 +48,7 @@ export function createInput(target) {
     mouse.y = event.clientY - rect.top;
   }
 
+  // Losing focus lets go of everything: no stuck keys after alt-tab.
   function releaseAll() {
     for (const key of Object.keys(held)) held[key] = false;
     mouse.down = false;
@@ -73,6 +78,7 @@ export function createInput(target) {
 
   return {
     mouse,
+    // A unit vector in the direction the movement keys point, or zero.
     move() {
       const x = (held.right ? 1 : 0) - (held.left ? 1 : 0);
       const y = (held.down ? 1 : 0) - (held.up ? 1 : 0);
@@ -91,6 +97,7 @@ export function createInput(target) {
     handbrake() {
       return held.handbrake;
     },
+    // Take the queued one-shot actions and clear them.
     takeActions() {
       const taken = actions;
       actions = 0;

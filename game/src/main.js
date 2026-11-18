@@ -11,7 +11,7 @@
 
 import { STEP } from './config.js';
 import { createWorld, EVENT_BUSTED, EVENT_SAVED, EVENT_WASTED } from './world.js';
-import { ACTION_CONFIRM, ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, createInput } from './input.js';
+import { ACTION_CONFIRM, ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, ACTION_TIME, createInput } from './input.js';
 import { createRenderer } from './render.js';
 import { SCREEN_BUSTED, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE } from './hud.js';
 import { stageShot } from './shots.js';
@@ -88,6 +88,11 @@ function runGame() {
     if (actions & ACTION_MUTE) {
       const muted = toggleMute(audio);
       announce(muted ? 'Sound off.' : 'Sound on.');
+    }
+    // N skips two hours of game time, so the night is always in reach.
+    if (screen === SCREEN_PLAY && actions & ACTION_TIME) {
+      world.state.time += 40;
+      announce('Two hours pass.');
     }
     if (screen === SCREEN_TITLE && actions & ACTION_CONFIRM) startGame();
     else if (screen === SCREEN_PLAY && actions & ACTION_PAUSE) {

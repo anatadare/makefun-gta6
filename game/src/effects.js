@@ -1,7 +1,8 @@
-// Effects: the juice. Particles (explosion fire, dust, smoke, tire smoke),
-// skid marks left by hard braking and drifting, expanding shockwave rings
-// from a wreck, and the screen shake that sells an impact. The world spawns
-// them, the renderer draws them, nothing here knows about the canvas.
+// Effects: the juice. Particles (explosion fire, dust, smoke, tire smoke,
+// muzzle smoke), skid marks left by hard braking and drifting, expanding
+// shockwave rings from a wreck, and the screen shake that sells an impact.
+// The world spawns them, the renderer draws them, nothing here knows about
+// the canvas.
 
 const MAX_PARTICLES = 400;
 const MAX_SKIDS = 220;
@@ -56,6 +57,16 @@ export function spawnTireSmoke(effects, x, y) {
 export function spawnEngineSmoke(effects, x, y) {
   if (effects.particles.length >= MAX_PARTICLES) return;
   addParticle(effects, x, y, (Math.random() - 0.5) * 20, -30 - Math.random() * 20, 0.7 + Math.random() * 0.5, 6 + Math.random() * 5, '#777777');
+}
+
+// Grey smoke curling from a scattergun's muzzle after the blast.
+export function spawnMuzzleSmoke(effects, x, y, angle) {
+  if (effects.particles.length >= MAX_PARTICLES) return;
+  const mx = x + Math.cos(angle) * 24;
+  const my = y + Math.sin(angle) * 24;
+  for (let i = 0; i < 3; i += 1) {
+    addParticle(effects, mx, my, Math.cos(angle) * 30 + (Math.random() - 0.5) * 20, Math.sin(angle) * 30 - 20 - Math.random() * 20, 0.4 + Math.random() * 0.3, 4 + Math.random() * 4, '#b9b9b9');
+  }
 }
 
 // A skid mark: a short dark streak along the car's heading.

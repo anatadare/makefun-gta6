@@ -2,9 +2,10 @@
 // The camera follows the player with a little lookahead and is clamped to
 // the city, so the beach and the water stay in frame at the south edge.
 // Cloud shadows drift over the world, slow and soft, so the noon sun feels
-// alive even when the street is still.
+// alive even when the street is still. And the day turns: dusk warms the
+// light, night darkens it and every car's headlights cut cones ahead.
 
-import { BEACH, CLOUDS, PALETTE, ROADS, VIEW, WORLD } from './config.js';
+import { BEACH, CLOUDS, PALETTE, ROADS, VIEW, WORLD, hourOfDay, nightFactor } from './config.js';
 import { missionObjective } from './missions.js';
 import { drawHud, drawScreenPanel, SCREEN_PLAY } from './hud.js';
 
@@ -110,6 +111,25 @@ export function createRenderer(canvas) {
       } else if (block.kind === 'market') {
         context.fillStyle = '#d8c49a';
         context.fillRect(block.x, block.y, block.w, block.h);
+      } else if (block.kind === 'stadium') {
+        // The bowl: terracotta track ring, green pitch, white lines.
+        context.fillStyle = '#c98d5f';
+        context.beginPath();
+        context.ellipse(block.track.x, block.track.y, block.track.rx, block.track.ry, 0, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = '#6aa84f';
+        context.beginPath();
+        context.ellipse(block.pitch.x, block.pitch.y, block.pitch.rx, block.pitch.ry, 0, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = 'rgba(255,255,255,0.7)';
+        context.lineWidth = 2;
+        context.beginPath();
+        context.ellipse(block.pitch.x, block.pitch.y, block.pitch.rx * 0.35, block.pitch.ry * 0.4, 0, 0, Math.PI * 2);
+        context.stroke();
+        context.beginPath();
+        context.moveTo(block.pitch.x, block.pitch.y - block.pitch.ry);
+        context.lineTo(block.pitch.x, block.pitch.y + block.pitch.ry);
+        context.stroke();
       } else {
         context.fillStyle = PALETTE.pavement;
         context.fillRect(block.x, block.y, block.w, block.h);
@@ -241,6 +261,20 @@ export function createRenderer(canvas) {
           context.fillStyle = 'rgba(255,255,255,0.6)';
           for (let stripe = 0; stripe * 14 < s.w; stripe += 2) {
             context.fillRect(s.x + stripe * 14, s.y, 7, 12);
+          }
+        }
+      }
+      if (block.stands) {
+        for (const s of block.stands) {
+          if (!inView(s.x, s.y, 60)) continue;
+          // Tiered stands: a dark base with pale row lines.
+          context.fillStyle = 'rgba(0,0,0,0.2)';
+          context.fillRect(s.x + 3, s.y + 4, s.w, s.h);
+          context.fillStyle = '#7d8aa0';
+          context.fillRect(s.x, s.y, s.w, s.h);
+          context.fillStyle = 'rgba(255,255,255,0.35)';
+          for (let row = 1; row <= 3; row += 1) {
+            context.fillRect(s.x + 6, s.y + (row * s.h) / 4 - 1, s.w - 12, 2);
           }
         }
       }
@@ -418,7 +452,7 @@ export function createRenderer(canvas) {
     }
   }
 
-  function drawCar(car, time) {
+  function drawCar(car, time, night) {
     if (!inView(car.x, car.y, 80)) return;
     const t = car.type;
     const half = t.length / 2;
@@ -426,6 +460,21 @@ export function createRenderer(canvas) {
     context.save();
     context.translate(car.x, car.y);
     context.rotate(car.angle);
+    // Headlight cones at night: a wash of light ahead of the car, drawn
+    // before the body so the car sits in its own beam.
+    if (night > 0.15 && !car.dead) {
+      const grad = context.createLinearGradient(half, 0, half + 190, 0);
+      grad.addColorStop(0, `rgba(255,240,170,${0.30 * night})`);
+      grad.addColorStop(1, 'rgba(255,240,170,0)');
+      context.fillStyle = grad;
+      context.beginPath();
+      context.moveTo(half - 4, -wide + 4);
+      context.lineTo(half + 190, -46);
+      context.lineTo(half + 190, 46);
+      context.lineTo(half - 4, wide - 4);
+      context.closePath();
+      context.fill();
+    }
     // Shadow.
     context.fillStyle = 'rgba(0,0,0,0.25)';
     context.beginPath();
@@ -478,7 +527,8 @@ export function createRenderer(canvas) {
     context.fillStyle = 'rgba(255,255,255,0.22)';
     context.fillRect(-half + 22, -wide + 5, t.length - 50, t.width - 10);
     // Each kind reads at a glance: the van's long roof, the pickup's bed,
-    // the sports car's spoiler.
+    // the sports car's spoiler, the taxi's roof sign, the muscle car's
+    // twin stripes.
     if (t.kind === 'van') {
       context.fillStyle = 'rgba(0,0,0,0.18)';
       context.fillRect(-half + 8, -wide + 6, t.length - 30, t.width - 12);
@@ -490,6 +540,20 @@ export function createRenderer(canvas) {
     } else if (t.kind === 'sports') {
       context.fillStyle = 'rgba(0,0,0,0.35)';
       context.fillRect(-half - 1, -wide + 2, 5, t.width - 4);
+    } else if (t.kind === 'taxi') {
+      context.fillStyle = '#fff8dc';
+      context.beginPath();
+      context.roundRect(-8, -6, 16, 12, 2);
+      context.fill();
+      context.fillStyle = '#222222';
+      context.font = 'bold 7px Arial, sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText('TAXI', 0, 0);
+    } else if (t.kind === 'muscle') {
+      context.fillStyle = 'rgba(0,0,0,0.45)';
+      context.fillRect(-half + 6, -7, t.length - 16, 5);
+      context.fillRect(-half + 6, 2, t.length - 16, 5);
     }
     // Headlights and brake lights.
     context.fillStyle = '#fff6b0';
@@ -583,6 +647,17 @@ export function createRenderer(canvas) {
     }
   }
 
+  // A market vendor: a person behind the counter with a white apron.
+  function drawVendor(ped) {
+    drawPerson(ped.x, ped.y, ped.angle, ped.shirt, false, null, false, false);
+    context.fillStyle = 'rgba(255,255,255,0.85)';
+    context.save();
+    context.translate(ped.x, ped.y);
+    context.rotate(ped.angle);
+    context.fillRect(-3, -6, 12, 12);
+    context.restore();
+  }
+
   // A sunbather: a bright towel on the sand, a body lying on it.
   function drawSunbather(ped) {
     if (!inView(ped.x, ped.y, 60)) return;
@@ -619,22 +694,36 @@ export function createRenderer(canvas) {
       }
     }
     for (const f of state.combat.flashes) {
+      // The scattergun's flash is a broad star; the pistol's is a spike.
       context.fillStyle = 'rgba(255,220,90,0.9)';
       context.save();
       context.translate(f.x, f.y);
       context.rotate(f.angle);
-      context.beginPath();
-      context.moveTo(0, -5);
-      context.lineTo(16, 0);
-      context.lineTo(0, 5);
-      context.closePath();
-      context.fill();
+      if (f.big) {
+        context.beginPath();
+        context.moveTo(0, -9);
+        context.lineTo(26, 0);
+        context.lineTo(0, 9);
+        context.closePath();
+        context.fill();
+        context.beginPath();
+        context.arc(0, 0, 10, 0, Math.PI * 2);
+        context.fill();
+      } else {
+        context.beginPath();
+        context.moveTo(0, -5);
+        context.lineTo(16, 0);
+        context.lineTo(0, 5);
+        context.closePath();
+        context.fill();
+      }
       context.restore();
     }
   }
 
   function drawWorld(state, time, dt) {
     const z = camera.zoom;
+    const night = nightFactor(time);
     const shake = state.effects.shake;
     const shX = shake > 0 ? (Math.random() - 0.5) * shake : 0;
     const shY = shake > 0 ? (Math.random() - 0.5) * shake : 0;
@@ -650,14 +739,15 @@ export function createRenderer(canvas) {
     drawStashes(state, time);
     // Cars, people and the player, sorted so nearer things draw over farther ones.
     const actors = [];
-    const queueCar = (car) => actors.push({ y: car.y, draw: () => drawCar(car, time) });
+    const queueCar = (car) => actors.push({ y: car.y, draw: () => drawCar(car, time, night) });
     for (const car of state.traffic.cars) queueCar(car);
     for (const car of state.traffic.parked) queueCar(car);
     for (const car of state.police.copCars) queueCar(car);
     if (state.missionCar) queueCar(state.missionCar);
     for (const ped of state.peds.peds) {
       if (ped.state === 'sun') actors.push({ y: ped.y, draw: () => drawSunbather(ped) });
-      else actors.push({ y: ped.y, draw: () => drawPerson(ped.x, ped.y, ped.angle, ped.shirt, ped.state === 'down', null, false) });
+      else if (ped.kind === 'vendor' && ped.state === 'idle') actors.push({ y: ped.y, draw: () => drawVendor(ped) });
+      else actors.push({ y: ped.y, draw: () => drawPerson(ped.x, ped.y, ped.angle, ped.shirt, ped.state === 'down', null, false, ped.kind === 'jog') });
     }
     for (const cop of state.police.footCops) {
       actors.push({ y: cop.y, draw: () => drawPerson(cop.x, cop.y, cop.angle, PALETTE.cop, cop.dead, cop.angle, false, true) });
@@ -678,6 +768,27 @@ export function createRenderer(canvas) {
     drawCloudShadows(dt);
   }
 
+  // The sky's tint over the whole frame: blue dark at night, warm at dusk
+  // and dawn, nothing at noon. Applied after the world, before the HUD.
+  function drawSkyTint(time) {
+    const night = nightFactor(time);
+    const hour = hourOfDay(time);
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    if (night > 0.02) {
+      context.fillStyle = `rgba(8,16,48,${0.34 * night})`;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    if (hour >= 17 && hour < 19) {
+      const dusk = Math.sin(((hour - 17) / 2) * Math.PI);
+      context.fillStyle = `rgba(255,110,40,${0.10 * dusk})`;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+    } else if (hour >= 6 && hour < 7) {
+      const dawn = Math.sin((hour - 6) * Math.PI);
+      context.fillStyle = `rgba(255,170,100,${0.08 * dawn})`;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
   function draw(state, screen, save, penalty, time, hintAlpha) {
     // The camera pulls back a little at speed, so the road ahead stays visible.
     // A staged shot can pin the zoom instead.
@@ -695,6 +806,7 @@ export function createRenderer(canvas) {
     context.fillStyle = PALETTE.backdrop;
     context.fillRect(0, 0, canvas.width, canvas.height);
     drawWorld(state, time, dt);
+    drawSkyTint(time);
     context.setTransform(view.scale, 0, 0, view.scale, view.x, view.y);
     if (screen === SCREEN_PLAY) drawHud(context, state, time, hintAlpha);
     drawScreenPanel(context, screen, state, save, penalty, time);

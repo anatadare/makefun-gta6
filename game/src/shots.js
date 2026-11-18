@@ -2,12 +2,13 @@
 // the real rules forward from a fresh world for a few seconds, steered by a
 // simple autopilot (hold the road ahead, swing around whatever is in front),
 // so the frame is what a short game really looks like and the same seed
-// always gives the same frame.
+// always gives the same frame. The cover shot is the chase: four stars, a
+// red Cometa, three Interceptors on its tail, a job running.
 
 import { STEP } from './config.js';
 import { createCar } from './vehicles.js';
-import { enterCar } from './player.js';
-import { fireBullet } from './combat.js';
+import { enterCar, WEAPON_SCATTER } from './player.js';
+import { fireSpread } from './combat.js';
 import { SCREEN_PLAY, SCREEN_TITLE } from './hud.js';
 
 const IDLE = {
@@ -74,18 +75,18 @@ function driveFor(world, seconds, corridor) {
 }
 
 function stageChase(world) {
-  // The cover: three stars, three cop cars on the player's tail, a mission
-  // running, the Fuego mid-drift down the avenue.
+  // The cover: four stars, three cop cars on the player's tail, a mission
+  // running, a red Cometa mid-drift down the avenue.
   world.reset();
   world.setMissionIndex(2);
   world.beginPlay();
   const player = world.state.player;
-  const car = createCar('fuego', 500, 1400, 0, '#ffd23f', 'player');
+  const car = createCar('cometa', 500, 1400, 0, '#e74c3c', 'player');
   car.vx = 340;
   world.state.traffic.parked.push(car);
   enterCar(player, car);
-  world.state.police.heat = 160;
-  world.state.police.stars = 3;
+  world.state.police.heat = 280;
+  world.state.police.stars = 4;
   world.state.police.lastSeenAt = 0;
   const cops = [
     createCar('interceptor', 360, 1400, 0, '#f2f2f2', 'cop'),
@@ -99,11 +100,11 @@ function stageChase(world) {
 }
 
 function stageDrive(world) {
-  // Cruising the beachfront avenue, traffic and palms all around.
+  // A yellow taxi cruising the beachfront avenue, traffic and palms around.
   world.reset();
   world.beginPlay();
   const player = world.state.player;
-  const car = createCar('brisa', 420, 2300, 0, '#2980b9', 'player');
+  const car = createCar('taxi', 420, 2300, 0, '#f1c40f', 'player');
   car.vx = 300;
   world.state.traffic.parked.push(car);
   enterCar(player, car);
@@ -118,12 +119,13 @@ function stageDrive(world) {
 
 function stageFoot(world) {
   // On foot on the avenue by the taxi stand, one star, a cop closing in
-  // down the open road, a shot mid-flight.
+  // down the open road, a scattergun blast mid-flight.
   world.reset();
   world.beginPlay();
   const player = world.state.player;
   player.x = 820;
   player.y = 1000;
+  player.weapon = WEAPON_SCATTER;
   world.state.police.footCops.push({
     x: 920,
     y: 1000,
@@ -142,10 +144,10 @@ function stageFoot(world) {
     const input = { ...IDLE, move: () => ({ x: -0.6, y: 0 }), mouse: { x: 0, y: 0, down: false } };
     world.step(STEP, input, 0, { x: cop.x, y: cop.y }, null);
   }
-  // One shot, fired straight at the cop while he is closing in, so the
-  // tracer is mid-flight when the frame lands.
+  // A scattergun blast straight at the cop while he is closing in, so the
+  // fan of tracers is mid-flight when the frame lands.
   const angle = Math.atan2(cop.y - player.y, cop.x - player.x);
-  fireBullet(world.state.combat, player.x, player.y, angle, 'player', 34);
+  fireSpread(world.state.combat, player.x, player.y, angle, 'player', 16, 5, 0.22);
   for (let i = 0; i < 0.05 / STEP; i += 1) {
     world.step(STEP, IDLE, 0, { x: cop.x, y: cop.y }, null);
   }

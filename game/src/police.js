@@ -2,8 +2,9 @@
 // player hides, cop cars that chase and ram, and foot cops who run the
 // player down, shoot back at high heat, and try to make an arrest up close.
 // The pursuit gets sharper with the stars: cops aim further ahead of a
-// moving target, swing for the rear quarter up close, and keep out of each
-// other's way instead of piling onto the same bumper.
+// moving target, swing for the rear quarter up close, keep out of each
+// other's way instead of piling onto the same bumper, and from four stars
+// the veterans take over with steadier aim.
 
 import { POLICE, WORLD } from './config.js';
 import { PLACES, randomRoadPoint, resolveCircle } from './city.js';
@@ -175,7 +176,9 @@ export function updatePolice(police, dt, now, player, playerCar, allCars, hooks)
     } else car.stuckAt = 0;
   }
 
-  // Foot cops run at the player and, at three stars and up, shoot.
+  // Foot cops run at the player and, at three stars and up, shoot. At four
+  // stars the veterans shoot straighter.
+  const spread = stars >= POLICE.veteranStars ? POLICE.spreadVeteran : POLICE.spreadRookie;
   for (let i = police.footCops.length - 1; i >= 0; i -= 1) {
     const cop = police.footCops[i];
     if (cop.dead) {
@@ -200,8 +203,7 @@ export function updatePolice(police, dt, now, player, playerCar, allCars, hooks)
     }
     if (stars >= 3 && player.onFoot && d < POLICE.copShootRange && now - cop.shootAt > POLICE.copShotCooldown) {
       cop.shootAt = now;
-      const spread = (police.random.next() - 0.5) * 0.35;
-      hooks.onCopShot(cop, want + spread);
+      hooks.onCopShot(cop, want + (police.random.next() - 0.5) * spread);
     }
     // An arrest needs a cop right on top of a slow player.
     const playerSpeed = playerCar ? carSpeed(playerCar) : player.speed;

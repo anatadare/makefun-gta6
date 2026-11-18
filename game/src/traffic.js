@@ -1,14 +1,16 @@
 // Traffic: the cars that drive the streets and the parked cars waiting to
-// be stolen. A traffic car runs between intersections, steering for the next
-// crossing, braking for whatever is ahead, and pulling over when a siren
-// closes in behind it. Cars far from the player are recycled so the streets
-// always feel alive near the camera.
+// be stolen. A traffic car runs between intersections, steering for the
+// next crossing, braking for whatever is ahead, and pulling over when a
+// siren closes in behind it. Cars far from the player are recycled so the
+// streets always feel alive near the camera. Taxis are everywhere; the
+// muscle car is a rare sight, worth stealing when you spot one.
 
 import { CAR_COLORS, ROADS, TRAFFIC } from './config.js';
 import { nearestIntersection, pointOnRoad, randomRoadPoint } from './city.js';
 import { carRadius, carSpeed, coastCar, collideCarPair, createCar, driveCar } from './vehicles.js';
 
-const TRAFFIC_TYPES = ['duna', 'brisa', 'tortuga', 'camino'];
+// Weighted by repetition: taxis are common, the Cometa is rare.
+const TRAFFIC_TYPES = ['duna', 'brisa', 'tortuga', 'camino', 'taxi', 'taxi', 'cometa'];
 const PARKED_V = ROADS.vertical;
 const PARKED_H = [200, 600, 1000, 1400, 1800, 2200];
 
@@ -35,7 +37,9 @@ function pickNextWaypoint(city, random, from, prev) {
 
 function spawnTrafficCar(traffic, city, random, nearX, nearY) {
   const spot = randomRoadPoint(random, nearX, nearY, TRAFFIC.spawnDistance * 0.4, TRAFFIC.spawnDistance);
-  const car = createCar(random.pick(TRAFFIC_TYPES), spot.x, spot.y, random.range(0, Math.PI * 2), random.pick(CAR_COLORS), 'traffic');
+  const typeId = random.pick(TRAFFIC_TYPES);
+  const color = typeId === 'taxi' ? '#f1c40f' : random.pick(CAR_COLORS);
+  const car = createCar(typeId, spot.x, spot.y, random.range(0, Math.PI * 2), color, 'traffic');
   const start = nearestIntersection(city, spot.x, spot.y);
   car.waypoint = pickNextWaypoint(city, random, start, null);
   car.cruise = random.range(TRAFFIC.speedMin, TRAFFIC.speedMax);
@@ -62,7 +66,9 @@ function parkOne(traffic, city, random) {
   const cross = nearestIntersection(city, x, y);
   if (Math.hypot(cross.x - x, cross.y - y) < 100) return false;
   if (traffic.parked.some((c) => Math.hypot(c.x - x, c.y - y) < 90)) return false;
-  traffic.parked.push(createCar(random.pick(TRAFFIC_TYPES), x, y, angle, random.pick(CAR_COLORS), 'parked'));
+  const typeId = random.pick(TRAFFIC_TYPES);
+  const color = typeId === 'taxi' ? '#f1c40f' : random.pick(CAR_COLORS);
+  traffic.parked.push(createCar(typeId, x, y, angle, color, 'parked'));
   return true;
 }
 

@@ -1,7 +1,7 @@
 // SOLMARA's city, grown from a seed: streets on a grid, blocks that hold
-// buildings, a park, a plaza, the docks and a market, palms along the walks,
-// umbrellas on the sand. The generator runs once per world; every other
-// module asks this one where things are and what is solid.
+// buildings, a park, a plaza, the docks, a market and a stadium, palms
+// along the walks, umbrellas on the sand. The generator runs once per
+// world; every other module asks this one where things are and what is solid.
 
 import { BEACH, BUILDING_COLORS, ROADS, STALL_COLORS, WORLD } from './config.js';
 
@@ -16,6 +16,7 @@ export const PLACES = {
   policeStation: { x: 1400, y: 600, label: 'Police Station' },
   hospital: { x: 2200, y: 1000, label: 'Solmara General' },
   beach: { x: 1800, y: 2440, label: 'Seabreeze Beach' },
+  stadium: { x: 2600, y: 800, label: 'Solmara Stadium' },
 };
 
 // Eight hidden cash stashes, $100 each, at fixed spots for explorers.
@@ -33,12 +34,14 @@ export const STASHES = [
 
 const KERB = ROADS.halfWidth + ROADS.sidewalk;
 
-// The special blocks: park, plaza, docks and market, keyed by their corner.
+// The special blocks: park, plaza, docks, market and stadium, keyed by
+// their corner (the crossing at the block's top-left).
 const SPECIAL_BLOCKS = {
   '1400,1000': 'park',
   '1000,600': 'plaza',
   '200,1800': 'docks',
   '2200,1400': 'market',
+  '2600,600': 'stadium',
 };
 
 // One block's inner rectangle, inside the sidewalks.
@@ -54,7 +57,11 @@ function raiseBuildings(random, rect, seedBase) {
   const gap = 12;
   const height = random.int(1, 3);
   const layout = random.int(0, 2);
-  const cells = layout === 0 ? [[0, 0, 1, 1]] : layout === 1 ? [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]] : [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]];
+  const cells = layout === 0
+    ? [[0, 0, 1, 1]]
+    : layout === 1
+      ? [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]]
+      : [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]];
   cells.forEach(([cx, cy, cw, ch], i) => {
     const w = rect.w * cw - inset * 2 - gap * (cw < 1 ? 0.5 : 0);
     const h = rect.h * ch - inset * 2 - gap * (ch < 1 ? 0.5 : 0);
@@ -71,6 +78,7 @@ function raiseBuildings(random, rect, seedBase) {
   return out;
 }
 
+// Crates stacked around the docks: cover in a shootout, solid to a car.
 function scatterCrates(random, rect) {
   const colors = ['#b5651d', '#5d7fa3', '#7a9b57', '#a35d8c'];
   const crates = [];
@@ -103,6 +111,21 @@ function raiseStalls(random, rect) {
     }
   }
   return stalls;
+}
+
+// The stadium: an oval running track around a green pitch, with stands on
+// the long sides. The track is flat ground (cars can cut across it); the
+// stands are solid.
+function buildStadium(rect) {
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+  const track = { x: cx, y: cy, rx: rect.w / 2 - 8, ry: rect.h / 2 - 8 };
+  const pitch = { x: cx, y: cy, rx: track.rx * 0.62, ry: track.ry * 0.55 };
+  const stands = [
+    { x: rect.x + 14, y: rect.y + 10, w: rect.w - 28, h: 22 },
+    { x: rect.x + 14, y: rect.y + rect.h - 32, w: rect.w - 28, h: 22 },
+  ];
+  return { track, pitch, stands };
 }
 
 function scatterPalms(random, rect, count, palms) {
@@ -144,6 +167,12 @@ export function buildCity(random) {
       } else if (kind === 'market') {
         block.stalls = raiseStalls(random, rect);
         scatterPalms(random, rect, 3, palms);
+      } else if (kind === 'stadium') {
+        const ground = buildStadium(rect);
+        block.track = ground.track;
+        block.pitch = ground.pitch;
+        block.stands = ground.stands;
+        scatterPalms(random, rect, 2, palms);
       } else {
         block.buildings = raiseBuildings(random, rect, index * 7 + 1);
         buildings.push(...block.buildings);
@@ -191,6 +220,7 @@ export function buildCity(random) {
   for (const block of blocks) {
     if (block.crates) solids.push(...block.crates);
     if (block.stalls) solids.push(...block.stalls);
+    if (block.stands) solids.push(...block.stands);
   }
 
   return { blocks, buildings, palms, umbrellas, intersections, places: PLACES, solids };

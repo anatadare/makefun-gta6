@@ -1,14 +1,17 @@
-// The story: seven jobs from Lena the fixer and Otis the garage owner, then
-// repeatable fares for money. A mission is a list of steps, each one a kind
-// the updater checks: reach a place, steal a car, lose the cops, beat a
-// clock, wreck a number of cop cars. The world owns the player and the
-// police; this module only reads them through the context the world passes
-// in, and reports progress back as events.
+// The story: eight jobs from Lena the fixer and Otis the garage owner,
+// then repeatable fares for money, some of them rush jobs against the
+// clock. A mission is a list of steps, each one a kind the updater checks:
+// reach a place, steal a car, lose the cops, beat a clock, wreck a number
+// of cop cars. Steps can carry a `done` line, spoken when the step lands,
+// and a `heatOnDone` that raises the wanted level the moment the step
+// completes, so a job can go loud halfway through. The world owns the
+// player and the police; this module only reads them through the context
+// the world passes in, and reports progress back as events.
 
 import { MISSIONS, POLICE } from './config.js';
 import { PLACES } from './city.js';
 
-const FARE_PLACES = ['taxiStand', 'marinaHotel', 'garage', 'docks', 'hideout', 'hospital', 'beach', 'policeStation'];
+const FARE_PLACES = ['taxiStand', 'marinaHotel', 'garage', 'docks', 'hideout', 'hospital', 'beach', 'policeStation', 'stadium'];
 
 const DEFS = [
   {
@@ -18,7 +21,7 @@ const DEFS = [
     intro: 'LENA: Mars, I need a driver. Taxi stand, downtown. Now.',
     outro: 'LENA: Clean run. $150 is yours.',
     steps: [
-      { kind: 'goto', place: 'taxiStand', text: 'Pick up the fare at the Taxi Stand' },
+      { kind: 'goto', place: 'taxiStand', text: 'Pick up the fare at the Taxi Stand', done: 'LENA: Got them. Marina Hotel, and step on it.' },
       { kind: 'wait', seconds: 1.5, text: 'Passenger getting in...' },
       { kind: 'goto', place: 'marinaHotel', text: 'Drop the passenger at the Marina Hotel' },
     ],
@@ -30,8 +33,8 @@ const DEFS = [
     intro: 'OTIS: A Fuego is parked by the docks. Bring it to my garage. Few scratches.',
     outro: 'OTIS: Beautiful. $300, and the garage is open to you.',
     steps: [
-      { kind: 'goto', place: 'docks', text: 'Find the Fuego at the Docks' },
-      { kind: 'steal', text: 'Steal the Fuego' },
+      { kind: 'goto', place: 'docks', text: 'Find the Fuego at the Docks', done: 'OTIS: There it is. Take it and go.' },
+      { kind: 'steal', text: 'Steal the Fuego', done: 'OTIS: You have it. My garage, now.' },
       { kind: 'goto', place: 'garage', text: "Deliver the Fuego to Otis's Garage" },
     ],
   },
@@ -42,7 +45,7 @@ const DEFS = [
     intro: 'LENA: The job went loud. Three stars on you. Reach the hideout and lie low.',
     outro: 'LENA: They lost you. $500. You drive like the wind, Mars.',
     steps: [
-      { kind: 'goto', place: 'hideout', text: 'Reach the Hideout in Palm Heights' },
+      { kind: 'goto', place: 'hideout', text: 'Reach the Hideout in Palm Heights', done: 'LENA: You made it. Stay low until the heat dies.' },
       { kind: 'lose', text: 'Stay out of sight until the heat dies down' },
     ],
   },
@@ -53,7 +56,7 @@ const DEFS = [
     intro: 'OTIS: Three packages, three stops, no dawdling. Docks first, then the station, the hospital, the hideout.',
     outro: 'OTIS: All three delivered. $700. You are getting fast, Mars.',
     steps: [
-      { kind: 'goto', place: 'docks', text: 'Pick up the packages at the Docks' },
+      { kind: 'goto', place: 'docks', text: 'Pick up the packages at the Docks', done: 'OTIS: Packages in the boot. Three stops, no dawdling.' },
       { kind: 'timed', place: 'policeStation', seconds: 60, text: 'Drop one at the Police Station' },
       { kind: 'timed', place: 'hospital', seconds: 60, text: 'Drop one at Solmara General' },
       { kind: 'timed', place: 'hideout', seconds: 60, text: 'Drop the last one at the Hideout' },
@@ -66,7 +69,7 @@ const DEFS = [
     intro: 'OTIS: One package at the docks, one buyer in Palm Heights. Ninety seconds.',
     outro: 'OTIS: Done. $800. One more job after this, and we are square.',
     steps: [
-      { kind: 'goto', place: 'docks', text: 'Pick up the package at the Docks' },
+      { kind: 'goto', place: 'docks', text: 'Pick up the package at the Docks', done: 'OTIS: Ninety seconds. Palm Heights. Go.' },
       { kind: 'timed', place: 'hideout', seconds: 90, text: 'Deliver to Palm Heights before the clock runs out' },
     ],
   },
@@ -91,13 +94,35 @@ const DEFS = [
     intro: 'OTIS: The PD impounded my best car. Wreck two of their Interceptors, then come see me. Do not get caught.',
     outro: 'OTIS: That is for my car. $1,500. Now we are square, Mars. Really square.',
     steps: [
-      { kind: 'wreck', count: 2, text: 'Wreck 2 police Interceptors' },
+      { kind: 'wreck', count: 2, text: 'Wreck 2 police Interceptors', done: 'OTIS: Two down. Come home.' },
+      { kind: 'goto', place: 'garage', text: "Get back to Otis's Garage" },
+    ],
+  },
+  {
+    id: 'bigone',
+    title: 'The Big One',
+    reward: 2000,
+    intro: 'LENA: One last score, Mars. A Cometa is waiting at the stadium. Take it, run the docks drop in 75 seconds, and whatever you do, do not get caught.',
+    outro: 'LENA: That is the whole story, Mars. $2,000. Solmara is yours now, for good.',
+    steps: [
+      { kind: 'goto', place: 'stadium', text: 'Get to Solmara Stadium', done: 'OTIS: There she is. The Cometa. Take her.' },
+      { kind: 'steal', text: 'Steal the Cometa', done: 'LENA: The docks, 75 seconds. Go, go, go!' },
+      { kind: 'timed', place: 'docks', seconds: 75, heatOnDone: 280, text: 'Drop the package at the Docks', done: 'LENA: Four stars! Lose them, Mars!' },
+      { kind: 'lose', text: 'Lose the cops', done: 'LENA: They lost you. One last stop.' },
       { kind: 'goto', place: 'garage', text: "Get back to Otis's Garage" },
     ],
   },
 ];
 
 export const MISSION_COUNT = DEFS.length;
+
+// The car a steal mission plants for the player: type, spot and colour.
+export function missionCarSpec(mission) {
+  if (!mission) return null;
+  if (mission.id === 'wheels') return { type: 'fuego', x: PLACES.docks.x + 30, y: PLACES.docks.y - 40, color: '#ffd23f' };
+  if (mission.id === 'bigone') return { type: 'cometa', x: 2548, y: 860, color: '#e74c3c' };
+  return null;
+}
 
 export function createMissions(savedIndex) {
   const index = Math.max(0, Math.min(savedIndex || 0, DEFS.length));
@@ -155,10 +180,6 @@ export function countWreck(missions) {
   if (step && step.kind === 'wreck') missions.wrecks += 1;
 }
 
-function missionCarSpot() {
-  return { x: PLACES.docks.x + 30, y: PLACES.docks.y - 40 };
-}
-
 export function startMission(missions, ctx) {
   const mission = currentMission(missions);
   if (!mission) return [];
@@ -168,10 +189,8 @@ export function startMission(missions, ctx) {
   missions.waitLeft = 0;
   missions.wrecks = 0;
   const events = [{ type: 'message', text: mission.intro }];
-  if (mission.id === 'wheels') {
-    const spot = missionCarSpot();
-    missions.targetCar = ctx.spawnMissionCar('fuego', spot.x, spot.y, '#ffd23f');
-  }
+  const spec = missionCarSpec(mission);
+  if (spec) missions.targetCar = ctx.spawnMissionCar(spec.type, spec.x, spec.y, spec.color);
   if (mission.id === 'getaway' || mission.id === 'payback') {
     ctx.setHeat(POLICE.starThresholds[3]);
   }
@@ -205,22 +224,40 @@ function failMission(missions) {
   ];
 }
 
+function cancelFare(missions) {
+  missions.fare = null;
+  missions.step = 0;
+  missions.timer = 0;
+  missions.fareCooldown = 5;
+  return [{ type: 'message', text: 'The customer gave up and walked. Next fare soon.' }];
+}
+
 function startFare(missions, ctx) {
   const from = ctx.random.pick(FARE_PLACES);
   let to = ctx.random.pick(FARE_PLACES);
   while (to === from) to = ctx.random.pick(FARE_PLACES);
-  const reward = ctx.random.int(50, 120);
+  // One fare in four is a rush job: a clock, and better money.
+  const rush = ctx.random.chance(0.25);
+  const reward = rush ? ctx.random.int(150, 220) : ctx.random.int(50, 120);
   missions.fare = {
     from,
     to,
     reward,
+    rush,
     steps: [
       { kind: 'goto', place: from, text: `Fare waiting at ${PLACES[from].label}` },
-      { kind: 'goto', place: to, text: `Drop the fare at ${PLACES[to].label}` },
+      rush
+        ? { kind: 'timed', place: to, seconds: 45, text: `RUSH: Drop the fare at ${PLACES[to].label}` }
+        : { kind: 'goto', place: to, text: `Drop the fare at ${PLACES[to].label}` },
     ],
   };
   missions.step = 0;
-  return [{ type: 'message', text: `LENA: Fare at ${PLACES[from].label}, going to ${PLACES[to].label}. $${reward}.` }];
+  return [{
+    type: 'message',
+    text: rush
+      ? `LENA: RUSH FARE at ${PLACES[from].label}, going to ${PLACES[to].label}. 45 seconds. $${reward}.`
+      : `LENA: Fare at ${PLACES[from].label}, going to ${PLACES[to].label}. $${reward}.`,
+  }];
 }
 
 function atPlace(player, place, radius) {
@@ -230,18 +267,27 @@ function atPlace(player, place, radius) {
 
 // Advance one step of the active job; returns the events the world should
 // act on (messages, completion, fares). A step that finishes hands over to
-// the next one, or completes the mission when it was the last.
+// the next one, or completes the mission when it was the last. A finished
+// step can speak a line and can raise the heat.
 function advanceStep(missions, ctx) {
+  const finished = currentStep(missions);
   missions.step += 1;
+  const events = [];
+  if (finished) {
+    if (finished.done) events.push({ type: 'message', text: finished.done });
+    if (finished.heatOnDone) ctx.setHeat(finished.heatOnDone);
+  }
   if (missions.fare) {
-    if (missions.step < missions.fare.steps.length) return [];
+    if (missions.step < missions.fare.steps.length) return events;
     const reward = missions.fare.reward;
     missions.fare = null;
     missions.fareCooldown = 5;
-    return [{ type: 'message', text: `Fare done. +$${reward}.` }, { type: 'fare', reward }];
+    events.push({ type: 'message', text: `Fare done. +$${reward}.` }, { type: 'fare', reward });
+    return events;
   }
-  if (missions.step < currentMission(missions).steps.length) return [];
-  return completeMission(missions, ctx);
+  if (missions.step < currentMission(missions).steps.length) return events;
+  events.push(...completeMission(missions, ctx));
+  return events;
 }
 
 export function updateMissions(missions, dt, ctx) {
@@ -277,7 +323,7 @@ export function updateMissions(missions, dt, ctx) {
     return events;
   }
   if (step.kind === 'lose') {
-    if (ctx.police.stars === 0) events.push(...completeMission(missions, ctx));
+    if (ctx.police.stars === 0) events.push(...advanceStep(missions, ctx));
     return events;
   }
   if (step.kind === 'wreck') {
@@ -291,7 +337,9 @@ export function updateMissions(missions, dt, ctx) {
       missions.timer = 0;
       events.push(...advanceStep(missions, ctx));
     } else if (missions.timer <= 0) {
-      events.push(...failMission(missions));
+      // A missed rush fare just walks away; a missed story drop fails the job.
+      if (missions.fare) events.push(...cancelFare(missions));
+      else events.push(...failMission(missions));
     }
     return events;
   }

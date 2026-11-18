@@ -1,23 +1,24 @@
 // The world: everything together. It owns the city, the player, traffic,
 // pedestrians, police, missions and combat, and steps them all in fixed
 // 1/60 s slices. The loop in main.js feeds it input; the renderer reads its
-// state. Events come back as bit flags so the loop can react (save, respawn).
-// Each slice runs in the same order: the player, the street, the law, the
-// bullets, the jobs, then the loose ends (stashes, the garage, the prompt).
+// state. Events come back as bit flags so the loop can react (save,
+// respawn). Each slice runs in the same order: the player, the street, the
+// law, the bullets, the jobs, then the loose ends (stashes, the garage,
+// the prompt).
 
 import { CAR_TYPES, PLAYER, POLICE } from './config.js';
 import { buildCity, PLACES, pointOnRoad, STASHES } from './city.js';
-import { ACTION_ENTER, ACTION_PUNCH } from './input.js';
+import { ACTION_ENTER, ACTION_PUNCH, ACTION_SWAP } from './input.js';
 import { createRandom } from './random.js';
-import { createPlayer, enterCar, exitCar, healPlayer, hurtPlayer, canFire, canPunch, walkPlayer } from './player.js';
+import { canFire, canPunch, createPlayer, enterCar, exitCar, healPlayer, hurtPlayer, swapWeapon, walkPlayer, WEAPON_NAMES, WEAPON_SCATTER } from './player.js';
 import { createTraffic, nearestStealable, updateTraffic } from './traffic.js';
 import { createPedestrians, knockDown, scarePeds, updatePedestrians } from './pedestrians.js';
 import { addHeat, clearWanted, createPolice, starsFromHeat, updatePolice } from './police.js';
-import { createCombat, fireBullet, meleeTarget, updateBullets } from './combat.js';
-import { countWreck, createMissions, currentMission, MISSION_COUNT, startMission, updateMissions } from './missions.js';
+import { createCombat, fireBullet, fireSpread, meleeTarget, updateBullets } from './combat.js';
+import { countWreck, createMissions, currentMission, MISSION_COUNT, missionCarSpec, startMission, updateMissions } from './missions.js';
 import { carRadius, carSpeed, createCar, driveCar } from './vehicles.js';
-import { addShake, addSkid, createEffects, spawnDust, spawnEngineSmoke, spawnExplosion, spawnTireSmoke, updateEffects } from './effects.js';
-import { playCrash, playExplosion, playPayday, playPickup, playShot, playSkid, playWanted, setEngine, setSiren } from './audio.js';
+import { addShake, addSkid, createEffects, spawnDust, spawnEngineSmoke, spawnExplosion, spawnMuzzleSmoke, spawnTireSmoke, updateEffects } from './effects.js';
+import { playCrash, playExplosion, playPayday, playPickup, playScatter, playShot, playSkid, playWanted, setEngine, setSiren } from './audio.js';
 
 export const EVENT_WASTED = 1;
 export const EVENT_BUSTED = 2;
@@ -164,6 +165,21 @@ export function createWorld(seed, save) {
     if (!state.traffic.parked.includes(car)) state.traffic.parked.push(car);
   }
 
+  function fireWeapon(player, audio, now) {
+    player.fireAt = now;
+    const angle = player.aimAngle;
+    if (player.weapon === WEAPON_SCATTER) {
+      fireSpread(state.combat, player.x, player.y, angle, 'player', PLAYER.scatterDamage, PLAYER.scatterPellets, PLAYER.scatterSpread);
+      spawnMuzzleSmoke(state.effects, player.x, player.y, angle);
+      if (audio) playScatter(audio);
+    } else {
+      fireBullet(state.combat, player.x, player.y, angle, 'player', PLAYER.bulletDamage);
+      if (audio) playShot(audio);
+    }
+    scarePeds(state.peds, player.x, player.y, 320, now);
+    if (nearestCopDistance() < 600 || state.police.stars > 0) addHeat(state.police, POLICE.crimeShoot, now);
+  }
+
   function handleOnFoot(dt, input, actions, aimWorld, audio, now) {
     const player = state.player;
     const police = state.police;
@@ -171,12 +187,13 @@ export function createWorld(seed, save) {
     if (player.sprinting && Math.random() < dt * 6) {
       spawnDust(state.effects, player.x, player.y + 8);
     }
+    if (actions & ACTION_SWAP) {
+      const weapon = swapWeapon(player);
+      addMessage(`Weapon: ${WEAPON_NAMES[weapon]}.`);
+      if (audio) playPickup(audio);
+    }
     if (input.mouse.down && canFire(player, now)) {
-      player.fireAt = now;
-      fireBullet(state.combat, player.x, player.y, player.aimAngle, 'player', PLAYER.bulletDamage);
-      if (audio) playShot(audio);
-      scarePeds(state.peds, player.x, player.y, 320, now);
-      if (nearestCopDistance() < 600 || police.stars > 0) addHeat(police, POLICE.crimeShoot, now);
+      fireWeapon(player, audio, now);
     }
     if (actions & ACTION_PUNCH && canPunch(player, now)) {
       player.punchAt = now;
@@ -335,11 +352,14 @@ export function createWorld(seed, save) {
   function handleMissions(dt) {
     let events = 0;
     const player = state.player;
-    // A wrecked mission car is replaced at the docks and the job restarts.
+    // A wrecked mission car is replaced where it started and the job restarts.
     if (state.missions.targetCar && state.missions.targetCar.dead && state.missions.active) {
-      state.missions.targetCar = spawnMissionCar('fuego', PLACES.docks.x + 30, PLACES.docks.y - 40, '#ffd23f');
-      state.missions.step = 0;
-      addMessage('OTIS: You wrecked it! There is another Fuego at the docks.');
+      const spec = missionCarSpec(currentMission(state.missions));
+      if (spec) {
+        state.missions.targetCar = spawnMissionCar(spec.type, spec.x, spec.y, spec.color);
+        state.missions.step = 0;
+        addMessage(`OTIS: You wrecked it! There is another ${spec.type === 'cometa' ? 'Cometa at the stadium' : 'Fuego at the docks'}.`);
+      }
     }
     const missionEvents = updateMissions(state.missions, dt, missionContext());
     for (const e of missionEvents) {

@@ -14,6 +14,8 @@ export function createRandom(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
+  // A float in [min, max), an integer in [min, max], a random member of a
+  // list, a coin flip at probability p, a random sign.
   function range(min, max) {
     return min + next() * (max - min);
   }

@@ -1,10 +1,19 @@
 // The player: Mars Delgado, getaway driver. On foot he runs, aims with the
-// mouse and shoots or punches; in a car he is the car. Health, money and the
-// car he is driving all live here. The aim turns smoothly toward the mouse
-// instead of snapping, so the gun feels held rather than glued.
+// mouse and shoots or punches; in a car he is the car. Health, money, the
+// car he is driving and the weapon in his hands all live here. The aim
+// turns smoothly toward the mouse instead of snapping, so the gun feels
+// held rather than glued. Q swaps between the pistol and the scattergun.
 
 import { PLAYER } from './config.js';
 import { resolveCircle } from './city.js';
+
+export const WEAPON_PISTOL = 'pistol';
+export const WEAPON_SCATTER = 'scatter';
+
+export const WEAPON_NAMES = {
+  [WEAPON_PISTOL]: 'Pistol',
+  [WEAPON_SCATTER]: 'Scattergun',
+};
 
 export function createPlayer(x, y) {
   return {
@@ -16,6 +25,7 @@ export function createPlayer(x, y) {
     car: null,
     health: PLAYER.health,
     money: 0,
+    weapon: WEAPON_PISTOL,
     moving: false,
     sprinting: false,
     lastHurtAt: -99,
@@ -90,10 +100,20 @@ export function healPlayer(player, dt, now) {
   player.health = Math.min(PLAYER.health, player.health + PLAYER.regenRate * dt);
 }
 
+// The scattergun is slow to work: each weapon has its own fire rate.
+export function fireCooldownFor(player) {
+  return player.weapon === WEAPON_SCATTER ? PLAYER.scatterCooldown : PLAYER.fireCooldown;
+}
+
 export function canFire(player, now) {
-  return now - player.fireAt >= PLAYER.fireCooldown;
+  return now - player.fireAt >= fireCooldownFor(player);
 }
 
 export function canPunch(player, now) {
   return now - player.punchAt >= PLAYER.punchCooldown;
+}
+
+export function swapWeapon(player) {
+  player.weapon = player.weapon === WEAPON_SCATTER ? WEAPON_PISTOL : WEAPON_SCATTER;
+  return player.weapon;
 }

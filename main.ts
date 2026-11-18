@@ -2,11 +2,14 @@
 // crime game in a sun-soaked coastal city, built as plain static files under
 // game/ (game/index.html and its ES modules, no library, no network request).
 // You play Mars Delgado, a getaway driver taking jobs from a fixer and a
-// garage owner: seven story missions, traffic and pedestrians, cars to steal,
-// a wanted level with police cars and foot cops, combat, a minimap HUD and
-// a save in localStorage. This program hands it in: it copies game/ and
-// screenshots/ from beside this file to /output and writes /output/dossier.json,
-// the summary the judge reads, with the vendored make.fun library.
+// garage owner: eight story missions (the last one a four-star finale), a
+// stadium district, a day/night cycle with headlights, taxis and a rare
+// muscle car, a scattergun beside the pistol, rush fares after the story,
+// traffic and pedestrians, cars to steal, a wanted level with police cars
+// and foot cops, combat, a minimap HUD and a save in localStorage. This
+// program hands it in: it copies game/ and screenshots/ from beside this
+// file to /output and writes /output/dossier.json, the summary the judge
+// reads, with the vendored make.fun library.
 //
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:

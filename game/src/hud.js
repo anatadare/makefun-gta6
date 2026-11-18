@@ -1,11 +1,14 @@
-// The HUD and the menus: wanted stars, health, money, speed, the minimap,
-// the mission objective with its timer bar, phone messages and context
-// prompts, plus the title, pause, wasted and busted panels. Everything is
-// drawn big and bright: the screenshots shrink, so small text would be lost.
+// The HUD and the screens: wanted stars, health, money, the clock, the
+// minimap, the mission objective with its timer bar, phone messages and
+// context prompts, plus the title, pause, wasted and busted panels. The
+// weapon in hand shows bottom left while on foot, and the end screens now
+// carry the run's stats. Everything is drawn big and bright: the
+// screenshots shrink, so small text would be lost.
 
-import { FONT, PALETTE, ROADS, VIEW } from './config.js';
+import { FONT, PALETTE, ROADS, VIEW, hourOfDay } from './config.js';
 import { PLACES, STASHES } from './city.js';
 import { MISSION_COUNT, missionObjective } from './missions.js';
+import { WEAPON_NAMES } from './player.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
@@ -18,6 +21,16 @@ const MAP = { x: VIEW.width - 226, y: 16, w: 210, h: 158, scale: 0.055 };
 // The red flash when the wanted level climbs: remembered across frames.
 let lastStarsSeen = 0;
 let flashUntil = -1;
+
+// The in-world clock: a 24h time, from the day/night cycle.
+function clockText(time) {
+  const hour = hourOfDay(time);
+  const h = Math.floor(hour);
+  const m = Math.floor((hour - h) * 60);
+  const hh = h < 10 ? `0${h}` : `${h}`;
+  const mm = m < 10 ? `0${m}` : `${m}`;
+  return `${hh}:${mm}`;
+}
 
 const fonts = new Map();
 function font(size, weight) {
@@ -89,10 +102,12 @@ function drawMinimap(ctx, state, time) {
     ctx.lineTo(x + w, y + ry * s);
   }
   ctx.stroke();
-  // The garage and the hideout, so the player always knows the way home.
+  // The garage, the hideout and the stadium, so the player always knows
+  // the way home and the way to the big game.
   const places = [
     { at: PLACES.garage, color: '#ff8a3d', size: 5 },
     { at: PLACES.hideout, color: PALETTE.green, size: 5 },
+    { at: PLACES.stadium, color: PALETTE.gold, size: 5 },
   ];
   for (const p of places) {
     ctx.fillStyle = p.color;
@@ -214,7 +229,7 @@ export function drawHud(ctx, state, time, hintAlpha) {
   lastStarsSeen = stars;
 
   // A dark panel behind the top-left cluster, so the text reads over sand too.
-  panel(ctx, 12, 10, 252, 158, 10);
+  panel(ctx, 12, 10, 252, 182, 10);
   drawStars(ctx, stars);
   bar(ctx, 20, 58, 230, 20, player.health / 100, player.health > 35 ? PALETTE.green : PALETTE.red);
   text(ctx, `$${player.money.toLocaleString('en-US')}`, 20, 104, 28, PALETTE.gold, 'left', 'bold');
@@ -222,6 +237,7 @@ export function drawHud(ctx, state, time, hintAlpha) {
   else text(ctx, `MISSION ${state.missions.index + 1}/${MISSION_COUNT}`, 20, 132, 16, PALETTE.muted, 'left', 'bold');
   const foundStashes = STASHES.length - state.stashes.length;
   text(ctx, `STASHES ${foundStashes}/${STASHES.length}`, 20, 154, 16, PALETTE.muted, 'left', 'bold');
+  text(ctx, `TIME ${clockText(time)}`, 20, 178, 16, PALETTE.muted, 'left', 'bold');
 
   drawMinimap(ctx, state, time);
   drawObjective(ctx, state);
@@ -237,6 +253,12 @@ export function drawHud(ctx, state, time, hintAlpha) {
     const ch = Math.max(0, player.car.health / 100);
     bar(ctx, 22, VIEW.height - 26, 156, 10, ch, ch > 0.5 ? PALETTE.green : ch > 0.25 ? '#f39c12' : PALETTE.red);
   }
+  // On foot, the same corner shows the weapon in hand and the swap key.
+  if (player.onFoot) {
+    panel(ctx, 12, VIEW.height - 112, 176, 56, 10);
+    text(ctx, WEAPON_NAMES[player.weapon], 22, VIEW.height - 82, 22, PALETTE.text, 'left', 'bold');
+    text(ctx, 'Q to swap weapon', 22, VIEW.height - 62, 16, PALETTE.muted, 'left');
+  }
   // Context prompt, bottom centre.
   if (state.prompt) {
     ctx.font = font(22, 'bold');
@@ -250,7 +272,7 @@ export function drawHud(ctx, state, time, hintAlpha) {
   if (hintAlpha > 0) {
     ctx.globalAlpha = hintAlpha;
     text(ctx, 'WASD move/drive · Mouse aim · Click shoot', VIEW.width - 20, VIEW.height - 44, 17, PALETTE.muted, 'right');
-    text(ctx, 'E enter car · F punch · Space handbrake · P pause · M mute', VIEW.width - 20, VIEW.height - 20, 17, PALETTE.muted, 'right');
+    text(ctx, 'E enter car · F punch · Q swap weapon · Space handbrake · P pause · M mute', VIEW.width - 20, VIEW.height - 20, 17, PALETTE.muted, 'right');
     ctx.globalAlpha = 1;
   }
 
@@ -281,7 +303,7 @@ function drawTitlePanel(ctx, save, time) {
   text(ctx, 'Mars Delgado is back in town. Drive, steal, run — and stay out of jail.', VIEW.width / 2, 292, 20, PALETTE.muted, 'center');
   const lines = [
     'WASD / Arrows — move on foot, drive a car',
-    'Mouse — aim   ·   Click — shoot   ·   F — punch',
+    'Mouse — aim   ·   Click — shoot   ·   F — punch   ·   Q — swap weapon',
     'E — steal / enter / exit a car   ·   Space — handbrake',
     'Shift — sprint   ·   P — pause   ·   M — mute',
   ];
@@ -319,17 +341,36 @@ function drawPausePanel(ctx, state, save) {
 function drawEndPanel(ctx, title, color, lines, prompt) {
   ctx.fillStyle = 'rgba(8, 20, 28, 0.62)';
   ctx.fillRect(0, 0, VIEW.width, VIEW.height);
-  text(ctx, title, VIEW.width / 2, 280, 84, color, 'center', 'bold');
-  lines.forEach((line, i) => text(ctx, line, VIEW.width / 2, 340 + i * 34, 24, PALETTE.text, 'center'));
-  text(ctx, prompt, VIEW.width / 2, 460, 26, PALETTE.gold, 'center', 'bold');
+  text(ctx, title, VIEW.width / 2, 250, 84, color, 'center', 'bold');
+  lines.forEach((line, i) => text(ctx, line, VIEW.width / 2, 310 + i * 34, 24, PALETTE.text, 'center'));
+  text(ctx, prompt, VIEW.width / 2, 310 + lines.length * 34 + 30, 26, PALETTE.gold, 'center', 'bold');
+}
+
+// The run's stats, shown on the wasted and busted screens: what the run
+// added up to, so the penalty stings a little less.
+function runStats(state, save) {
+  const foundStashes = STASHES.length - state.stashes.length;
+  return [
+    `Missions: ${Math.min(save.missionIndex || 0, MISSION_COUNT)}/${MISSION_COUNT}`,
+    `Money earned: $${(save.totalEarned || 0).toLocaleString('en-US')}  ·  Cars stolen: ${save.carsStolen || 0}`,
+    `Stashes found: ${foundStashes}/${STASHES.length}`,
+  ];
 }
 
 export function drawScreenPanel(ctx, screen, state, save, penalty, time) {
   if (screen === SCREEN_TITLE) drawTitlePanel(ctx, save, time);
   else if (screen === SCREEN_PAUSED) drawPausePanel(ctx, state, save);
   else if (screen === SCREEN_OVER) {
-    drawEndPanel(ctx, 'WASTED', PALETTE.red, ['The doctors patched you up at Solmara General.', `Hospital bill: $${penalty}.`], 'Press R to get back out there');
+    drawEndPanel(ctx, 'WASTED', PALETTE.red, [
+      'The doctors patched you up at Solmara General.',
+      `Hospital bill: $${penalty}.`,
+      ...runStats(state, save),
+    ], 'Press R to get back out there');
   } else if (screen === SCREEN_BUSTED) {
-    drawEndPanel(ctx, 'BUSTED', PALETTE.blue, ['The Solmara PD let you go with a fine.', `Fine: $${penalty}.`], 'Press R to walk free');
+    drawEndPanel(ctx, 'BUSTED', PALETTE.blue, [
+      'The Solmara PD let you go with a fine.',
+      `Fine: $${penalty}.`,
+      ...runStats(state, save),
+    ], 'Press R to walk free');
   }
 }

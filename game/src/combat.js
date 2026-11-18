@@ -1,12 +1,14 @@
 // Combat: bullets and fists. Bullets fly straight, spark off buildings and
-// hurt whatever they touch (people and cars). A punch is a short arc in front
-// of the attacker. Bullets live in a ring buffer: firing takes the next slot
-// whether it is free or still flying, so a long firefight never runs dry.
+// hurt whatever they touch (people and cars). A punch is a short arc in
+// front of the attacker. The scattergun fires a fan of pellets instead of
+// one round: five chances to hit, none of them flying far. Bullets live in
+// a ring buffer: firing takes the next slot whether it is free or still
+// flying, so a long firefight never runs dry.
 
 import { PLAYER } from './config.js';
 import { circleHitsSolid } from './city.js';
 
-const POOL = 48;
+const POOL = 64;
 
 export function createCombat() {
   const bullets = [];
@@ -16,18 +18,36 @@ export function createCombat() {
   return { bullets, cursor: 0, sparks: [], flashes: [] };
 }
 
-export function fireBullet(combat, x, y, angle, from, damage) {
+function launchBullet(combat, x, y, angle, from, damage, speed, life) {
   const b = combat.bullets[combat.cursor];
   combat.cursor = (combat.cursor + 1) % POOL;
   b.active = true;
   b.x = x + Math.cos(angle) * 20;
   b.y = y + Math.sin(angle) * 20;
-  b.vx = Math.cos(angle) * PLAYER.bulletSpeed;
-  b.vy = Math.sin(angle) * PLAYER.bulletSpeed;
+  b.vx = Math.cos(angle) * speed;
+  b.vy = Math.sin(angle) * speed;
   b.from = from;
   b.damage = damage;
-  b.life = 1.1;
-  combat.flashes.push({ x: b.x, y: b.y, angle, until: 0.06 });
+  b.life = life;
+  return b;
+}
+
+export function fireBullet(combat, x, y, angle, from, damage) {
+  const b = launchBullet(combat, x, y, angle, from, damage, PLAYER.bulletSpeed, 1.1);
+  combat.flashes.push({ x: b.x, y: b.y, angle, until: 0.06, big: false });
+  return true;
+}
+
+// A scattergun blast: `count` pellets fanned across `spread` radians,
+// each weaker and shorter-lived than a pistol round.
+export function fireSpread(combat, x, y, angle, from, damage, count, spread) {
+  for (let i = 0; i < count; i += 1) {
+    const offset = (i / Math.max(1, count - 1) - 0.5) * 2 * spread;
+    launchBullet(combat, x, y, angle + offset, from, damage, PLAYER.scatterSpeed, PLAYER.scatterLife);
+  }
+  const mx = x + Math.cos(angle) * 22;
+  const my = y + Math.sin(angle) * 22;
+  combat.flashes.push({ x: mx, y: my, angle, until: 0.09, big: true });
   return true;
 }
 

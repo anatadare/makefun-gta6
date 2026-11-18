@@ -20,6 +20,10 @@ function asIndexList(value) {
   return value.filter((n) => Number.isInteger(n) && n >= 0);
 }
 
+function asNonNegativeInt(value, fallback) {
+  return Number.isInteger(value) ? Math.max(0, value) : fallback;
+}
+
 export function loadSave() {
   let data = null;
   try {
@@ -32,10 +36,10 @@ export function loadSave() {
   return {
     v: SAVE_VERSION,
     money: asNumber(data.money, 0),
-    missionIndex: Number.isInteger(data.missionIndex) ? Math.max(0, data.missionIndex) : 0,
+    missionIndex: asNonNegativeInt(data.missionIndex, 0),
     totalEarned: asNumber(data.totalEarned, 0),
     stashes: asIndexList(data.stashes),
-    carsStolen: Number.isInteger(data.carsStolen) ? Math.max(0, data.carsStolen) : 0,
+    carsStolen: asNonNegativeInt(data.carsStolen, 0),
   };
 }
 
